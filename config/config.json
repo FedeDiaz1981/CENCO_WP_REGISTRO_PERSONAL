@@ -1,0 +1,18 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/config.2.0.schema.json",
+  "version": "2.0",
+  "bundles": {
+    "wp-registro-personal-web-part": {
+      "components": [
+        {
+          "entrypoint": "./lib/webparts/wpRegistroPersonal/WpRegistroPersonalWebPart.js",
+          "manifest": "./src/webparts/wpRegistroPersonal/WpRegistroPersonalWebPart.manifest.json"
+        }
+      ]
+    }
+  },
+  "externals": {},
+  "localizedResources": {
+    "WpRegistroPersonalWebPartStrings": "lib/webparts/wpRegistroPersonal/loc/{locale}.js"
+  }
+}

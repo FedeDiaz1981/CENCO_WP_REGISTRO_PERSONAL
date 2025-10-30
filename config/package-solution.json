@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "cenco-wp-registro-personal-client-side-solution",
+    "id": "6ac4b6b6-dfdd-48e5-ac6c-4ee14aa1393d",
+    "version": "1.5.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.21.1"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "cenco-wp-registro-personal description"
+      },
+      "longDescription": {
+        "default": "cenco-wp-registro-personal description"
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "cenco-wp-registro-personal Feature",
+        "description": "The feature that activates elements of the cenco-wp-registro-personal solution.",
+        "id": "a2508be4-09fa-4bfb-bcf8-72eb11d4da81",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/cenco-wp-registro-personal.sppkg"
+  }
+}
