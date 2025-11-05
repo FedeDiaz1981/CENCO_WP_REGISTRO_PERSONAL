@@ -87,37 +87,50 @@ const dateToISO = (d?: Date | null) => (d ? d.toISOString() : null);
 
 type DocFields = { Caducidad?: string | null; Emision?: string | null };
 
-// ---- Estilos / Tema ----
+// ===== Tema Cencosud =====
 const theme = createTheme({
   palette: {
-    themePrimary: "#2563eb",
-    themeLighterAlt: "#f6f9ff",
-    themeLighter: "#d8e6fe",
-    themeLight: "#b6d0fd",
-    themeTertiary: "#6ea4fb",
-    themeSecondary: "#377df7",
-    themeDarkAlt: "#2159d3",
-    themeDark: "#1c49b0",
-    themeDarker: "#14357f",
-    neutralLighterAlt: "#faf9f8",
-    neutralLighter: "#f3f2f1",
-    neutralLight: "#edebe9",
-    neutralQuaternaryAlt: "#e1dfdd",
-    neutralQuaternary: "#d0d0d0",
-    neutralTertiaryAlt: "#c8c6c4",
-    neutralTertiary: "#a19f9d",
-    neutralSecondary: "#605e5c",
-    neutralPrimaryAlt: "#3b3a39",
-    neutralPrimary: "#323130",
-    neutralDark: "#201f1e",
-    black: "#000000",
+    themePrimary: "#005596",
+    themeLighterAlt: "#f2f7fb",
+    themeLighter: "#d6e5f2",
+    themeLight: "#b7d0e7",
+    themeTertiary: "#71a5d0",
+    themeSecondary: "#357fba",
+    themeDarkAlt: "#004d87",
+    themeDark: "#00416f",
+    themeDarker: "#002f51",
+    neutralLighterAlt: "#f5f5f5",
+    neutralLighter: "#f0f0f0",
+    neutralLight: "#e6e6e6",
+    neutralQuaternaryAlt: "#d6d6d6",
+    neutralQuaternary: "#cccccc",
+    neutralTertiaryAlt: "#c4c4c4",
+    neutralTertiary: "#333333",
+    neutralSecondary: "#2d2d2d",
+    neutralPrimaryAlt: "#272727",
+    neutralPrimary: "#333333",
+    neutralDark: "#1f1f1f",
+    black: "#1a1a1a",
     white: "#ffffff",
   },
   effects: {
     roundedCorner2: "12px",
-    elevation8: "0 6px 18px rgba(0,0,0,.08)" as any,
+    elevation8: "0 6px 18px rgba(0,0,0,.05)" as any,
   },
 });
+
+// estilos para que los campos no pisen el borde redondeado del contenedor
+const roundedField = {
+  fieldGroup: { borderRadius: 10 },
+};
+const roundedDropdown = {
+  title: { borderRadius: 10 },
+};
+const roundedDatePicker = {
+  textField: {
+    selectors: { ".ms-TextField-fieldGroup": { borderRadius: 10 } },
+  },
+};
 
 // ---- Mini componente: Tarjeta documento (para INGRESAR) ----
 interface DocCardProps {
@@ -128,7 +141,6 @@ interface DocCardProps {
   file: File | null;
   onFileChange: (file: File | null) => void;
 }
-
 
 const DocCard: React.FC<DocCardProps> = ({
   title,
@@ -156,7 +168,13 @@ const DocCard: React.FC<DocCardProps> = ({
       }}
     >
       <StackItem styles={{ root: { minWidth: 160 } }}>
-        <Label styles={{ root: { fontWeight: 600 } }}>{title}</Label>
+        <Label
+          styles={{
+            root: { fontWeight: 600, color: theme.palette.themePrimary },
+          }}
+        >
+          {title}
+        </Label>
       </StackItem>
       <StackItem grow styles={{ root: { minWidth: 220, maxWidth: 320 } }}>
         <DatePicker
@@ -166,6 +184,7 @@ const DocCard: React.FC<DocCardProps> = ({
           firstDayOfWeek={DayOfWeek.Monday}
           placeholder="Seleccionar fecha"
           ariaLabel={dateLabel}
+          styles={roundedDatePicker}
         />
       </StackItem>
       <StackItem grow styles={{ root: { minWidth: 220, maxWidth: 340 } }}>
@@ -187,7 +206,11 @@ const DocCard: React.FC<DocCardProps> = ({
             onClick={() => fileInputRef.current?.click()}
           />
           {file && (
-            <Stack horizontal tokens={{ childrenGap: 6 }} verticalAlign="center">
+            <Stack
+              horizontal
+              tokens={{ childrenGap: 6 }}
+              verticalAlign="center"
+            >
               <Icon iconName="Page" />
               <span style={{ wordBreak: "break-all" }}>{file.name}</span>
               <DefaultButton
@@ -266,7 +289,11 @@ const cutoffSinceMonths = (months: number) => addMonthsSafe(today0(), -months);
 // ===========================================================
 // REGISTRO DE PERSONAL
 // ===========================================================
-const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtrarPorProveedor }) => {
+const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
+  sp,
+  siteUrl,
+  filtrarPorProveedor,
+}) => {
   const [modo, setModo] = React.useState<Modo>("Ingresar");
   const [proveedorTitleOculto, setProveedorTitleOculto] = React.useState("");
   const [proveedorId, setProveedorId] = React.useState<number | null>(null);
@@ -287,11 +314,16 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
 
   // ===== visibilidad dinámica por Puesto =====
   const puestoNorm = (form.Puesto || "").toLowerCase().trim();
-  const showEspecificar = React.useMemo(() => puestoNorm === "otro", [puestoNorm]);
-  const showLicenciaCat = React.useMemo(() => puestoNorm === "conductor", [puestoNorm]);
+  const showEspecificar = React.useMemo(
+    () => puestoNorm === "otro",
+    [puestoNorm]
+  );
+  const showLicenciaCat = React.useMemo(
+    () => puestoNorm === "conductor",
+    [puestoNorm]
+  );
 
   // -------- Sección 3: Documentación (para Ingresar) --------
-  // IMPORTANTE: estos estados van ANTES de errorDocs
   const [dniCaducidad, setDniCaducidad] = React.useState<Date | null>(null);
   const [dniFile, setDniFile] = React.useState<File | null>(null);
   const [licCaducidad, setLicCaducidad] = React.useState<Date | null>(null);
@@ -300,7 +332,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
   const [carnetFile, setCarnetFile] = React.useState<File | null>(null);
   const [penalesEmision, setPenalesEmision] = React.useState<Date | null>(null);
   const [penalesFile, setPenalesFile] = React.useState<File | null>(null);
-  const [policialesEmision, setPolicialesEmision] = React.useState<Date | null>(null);
+  const [policialesEmision, setPolicialesEmision] = React.useState<Date | null>(
+    null
+  );
   const [policialesFile, setPolicialesFile] = React.useState<File | null>(null);
 
   // ---- Estado de grilla de documentación (Modificar) ----
@@ -333,36 +367,34 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
       return null;
     }
 
-   if (modo === "Modificar") {
-  // util local sin .find()
-  const getFechaByLabel = (lbl: string): Date | null => {
-    for (let i = 0; i < docRows.length; i++) {
-      if (docRows[i].label === lbl) return docRows[i].fecha || null;
+    if (modo === "Modificar") {
+      const getFechaByLabel = (lbl: string): Date | null => {
+        for (let i = 0; i < docRows.length; i++) {
+          if (docRows[i].label === lbl) return docRows[i].fecha || null;
+        }
+        return null;
+      };
+
+      const cSan = getFechaByLabel("Carnet de sanidad");
+      if (!isNotOlderThanMonths(cSan, 6)) {
+        return `La fecha de emisión del "Carnet de sanidad" no puede ser anterior a ${fmt(
+          cutoffSinceMonths(6)
+        )}.`;
+      }
+      const pen = getFechaByLabel("Antecedentes penales");
+      if (!isNotOlderThanMonths(pen, 12)) {
+        return `La fecha de emisión de "Antecedentes penales" no puede ser anterior a ${fmt(
+          cutoffSinceMonths(12)
+        )}.`;
+      }
+      const pol = getFechaByLabel("Antecedentes policiales");
+      if (!isNotOlderThanMonths(pol, 12)) {
+        return `La fecha de emisión de "Antecedentes policiales" no puede ser anterior a ${fmt(
+          cutoffSinceMonths(12)
+        )}.`;
+      }
+      return null;
     }
-    return null;
-  };
-
-  const cSan = getFechaByLabel("Carnet de sanidad");
-  if (!isNotOlderThanMonths(cSan, 6)) {
-    return `La fecha de emisión del "Carnet de sanidad" no puede ser anterior a ${fmt(
-      cutoffSinceMonths(6)
-    )}.`;
-  }
-  const pen = getFechaByLabel("Antecedentes penales");
-  if (!isNotOlderThanMonths(pen, 12)) {
-    return `La fecha de emisión de "Antecedentes penales" no puede ser anterior a ${fmt(
-      cutoffSinceMonths(12)
-    )}.`;
-  }
-  const pol = getFechaByLabel("Antecedentes policiales");
-  if (!isNotOlderThanMonths(pol, 12)) {
-    return `La fecha de emisión de "Antecedentes policiales" no puede ser anterior a ${fmt(
-      cutoffSinceMonths(12)
-    )}.`;
-  }
-  return null;
-}
-
 
     return null;
   }, [modo, carnetEmision, penalesEmision, policialesEmision, docRows]);
@@ -384,12 +416,48 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
   };
 
   const columns: IColumn[] = [
-    { key: "doc", name: "Documento", fieldName: "Title", minWidth: 120, isResizable: true },
-    { key: "nom", name: "Nombre", fieldName: "Nombre", minWidth: 120, isResizable: true },
-    { key: "ap", name: "Ap. paterno", fieldName: "Apellido_x0020_paterno", minWidth: 120, isResizable: true },
-    { key: "am", name: "Ap. materno", fieldName: "Apellido_x0020_materno", minWidth: 120, isResizable: true },
-    { key: "pto", name: "Puesto", fieldName: "puesto", minWidth: 120, isResizable: true },
-    { key: "cat", name: "Categoría", fieldName: "Categoria", minWidth: 90, isResizable: true },
+    {
+      key: "doc",
+      name: "Documento",
+      fieldName: "Title",
+      minWidth: 120,
+      isResizable: true,
+    },
+    {
+      key: "nom",
+      name: "Nombre",
+      fieldName: "Nombre",
+      minWidth: 120,
+      isResizable: true,
+    },
+    {
+      key: "ap",
+      name: "Ap. paterno",
+      fieldName: "Apellido_x0020_paterno",
+      minWidth: 120,
+      isResizable: true,
+    },
+    {
+      key: "am",
+      name: "Ap. materno",
+      fieldName: "Apellido_x0020_materno",
+      minWidth: 120,
+      isResizable: true,
+    },
+    {
+      key: "pto",
+      name: "Puesto",
+      fieldName: "puesto",
+      minWidth: 120,
+      isResizable: true,
+    },
+    {
+      key: "cat",
+      name: "Categoría",
+      fieldName: "Categoria",
+      minWidth: 90,
+      isResizable: true,
+    },
   ];
 
   const [itemsProveedor, setItemsProveedor] = React.useState<PersonaItem[]>([]);
@@ -430,61 +498,69 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
       },
     });
   }
-  
+
   React.useEffect(() => {
-  const visible = modo === "Modificar" || modo === "Dar de baja";
-  if (!visible) {
-    setItemsProveedor([]);
-    return;
-  }
-
-  let cancelado = false;
-
-  const cargarGrid = async () => {
-    setCargandoGrid(true);
-    try {
-      let query = sp.web.lists
-        .getByTitle(LST_PERSONAS)
-        .items.select(
-          "Id",
-          "Title",
-          "Nombre",
-          "Apellido_x0020_paterno",
-          "Apellido_x0020_materno",
-          "tipodocumento",
-          "puesto",
-          "otro",
-          "Licencia",
-          "Categoria",
-          "ProveedorId",
-          "correosnotificacion"
-        )
-        .orderBy("Id", false)
-        .top(5000);
-
-      // si el toggle está activo, filtra por el Proveedor del usuario
-      if (filtrarPorProveedor) {
-        if (!proveedorId) {
-          if (!cancelado) setItemsProveedor([]);
-          return;
-        }
-        query = query.filter(`ProveedorId eq ${proveedorId}`);
-      }
-
-      const items = await query();
-      if (!cancelado) setItemsProveedor(items as PersonaItem[]);
-    } catch {
-      if (!cancelado) setItemsProveedor([]);
-    } finally {
-      if (!cancelado) setCargandoGrid(false);
+    const visible = modo === "Modificar" || modo === "Dar de baja";
+    if (!visible) {
+      setItemsProveedor([]);
+      return;
     }
-  };
 
-  cargarGrid().catch(() => {});
-  return () => {
-    cancelado = true;
-  };
-}, [modo, proveedorId, sp, filtrarPorProveedor]);
+    let cancelado = false;
+
+    const cargarGrid = async () => {
+      setCargandoGrid(true);
+      try {
+        let query = sp.web.lists
+          .getByTitle(LST_PERSONAS)
+          .items.select(
+            "Id",
+            "Title",
+            "Nombre",
+            "Apellido_x0020_paterno",
+            "Apellido_x0020_materno",
+            "tipodocumento",
+            "puesto",
+            "otro",
+            "Licencia",
+            "Categoria",
+            "ProveedorId",
+            "correosnotificacion"
+          )
+          .orderBy("Id", false)
+          .top(5000);
+
+        if (filtrarPorProveedor) {
+          if (!proveedorId) {
+            if (!cancelado) {
+              setItemsProveedor([]);
+              setCargandoGrid(false);
+            }
+            return;
+          }
+          query = query.filter(`ProveedorId eq ${proveedorId}`);
+        }
+
+        const items = await query();
+
+        const itemsFiltrados =
+          filtrarPorProveedor && proveedorId
+            ? (items as any[]).filter((it) => it.ProveedorId === proveedorId)
+            : (items as any[]);
+
+        if (!cancelado) setItemsProveedor(itemsFiltrados);
+      } catch {
+        if (!cancelado) setItemsProveedor([]);
+      } finally {
+        if (!cancelado) setCargandoGrid(false);
+      }
+    };
+
+    cargarGrid().catch(() => {});
+    return () => {
+      cancelado = true;
+    };
+  }, [modo, sp, filtrarPorProveedor, proveedorId]);
 
   // Meta lookup Proveedor
   type LookupMeta = {
@@ -492,7 +568,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
     TypeAsString: string;
     AllowMultipleValues?: boolean;
   };
-  const [provFieldMeta, setProvFieldMeta] = React.useState<LookupMeta | null>(null);
+  const [provFieldMeta, setProvFieldMeta] = React.useState<LookupMeta | null>(
+    null
+  );
 
   const buildProveedorPayload = () => {
     if (!proveedorId || !provFieldMeta) return {};
@@ -500,12 +578,11 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
     const tas = (provFieldMeta.TypeAsString || "").toLowerCase();
     const isMulti =
       provFieldMeta.AllowMultipleValues === true || tas.indexOf("multi") !== -1;
-    return isMulti ? { [key]: { results: [proveedorId] } } : { [key]: proveedorId };
+    return isMulti
+      ? { [key]: { results: [proveedorId] } }
+      : { [key]: proveedorId };
   };
 
-
-
-  // Carga meta campo + proveedor del usuario
   React.useEffect(() => {
     let cancelado = false;
     const cargar = async () => {
@@ -589,7 +666,6 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
     setDocRows(makeDefaultDocRows());
   };
 
-  // ----------------- Utilidades Personas -----------------
   const findPersonaByDocumento = async (doc: string) => {
     const items = await sp.web.lists
       .getByTitle(LST_PERSONAS)
@@ -633,8 +709,10 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
   const eliminarEnPersonas = async (id: number) =>
     sp.web.lists.getByTitle(LST_PERSONAS).items.getById(id).delete();
 
-  // ----------------- Utilidades Documentación -----------------
-  const addDocItem = async (label: string, fields: DocFields): Promise<number> => {
+  const addDocItem = async (
+    label: string,
+    fields: DocFields
+  ): Promise<number> => {
     const payload: any = { Title: form.Documento, Documento: label };
     if (fields.Caducidad !== undefined) payload.Caducidad = fields.Caducidad;
     if (fields.Emision !== undefined) payload.Emision = fields.Emision;
@@ -695,8 +773,11 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
     await item.attachmentFiles.add(file.name, file);
   };
 
-  // Inserta o actualiza sin borrar adjuntos existentes
-  const upsertDocRow = async (label: string, fields: DocFields, file?: File | null) => {
+  const upsertDocRow = async (
+    label: string,
+    fields: DocFields,
+    file?: File | null
+  ) => {
     if (!form.Documento?.trim())
       throw new Error("Documento (Title) es obligatorio para Documentación.");
     const existing = await getDocItemByLabel(form.Documento, label);
@@ -707,11 +788,11 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
     } else {
       id = await addDocItem(label, fields);
     }
-    if (!id || isNaN(id)) throw new Error("No se pudo obtener Id de Documentación.");
+    if (!id || isNaN(id))
+      throw new Error("No se pudo obtener Id de Documentación.");
     if (file) await attachFile(id, file);
   };
 
-  // ----------------- Guardar (según modo) -----------------
   const onGuardar = async () => {
     setMensaje(null);
     setError(null);
@@ -786,14 +867,18 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
         }
 
         await loadDocumentacionByTitle(form.Documento);
-        setMensaje("Registro modificado. Documentación actualizada sin borrar adjuntos.");
+        setMensaje(
+          "Registro modificado. Documentación actualizada sin borrar adjuntos."
+        );
       }
 
       if (modo === "Dar de baja") {
         const persona = await findPersonaByDocumento(form.Documento);
         if (persona) await eliminarEnPersonas(persona.Id);
         await deleteAllDocsByTitle(form.Documento);
-        setMensaje("Registro dado de baja en Personas y toda la Documentación.");
+        setMensaje(
+          "Registro dado de baja en Personas y toda la Documentación."
+        );
       }
 
       setDniFile(null);
@@ -810,7 +895,6 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
     return isNaN(d.getTime()) ? null : d;
   }
 
-  // ====== Cargar documentación (fechas + grilla de docs con adjuntos) ======
   async function loadDocumentacionByTitle(docTitle: string): Promise<void> {
     const rows = await sp.web.lists
       .getByTitle(LST_DOCS)
@@ -824,14 +908,36 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
     setLicCaducidad(toDate(map.get("Licencia")?.Caducidad ?? null));
     setCarnetEmision(toDate(map.get("Carnet de sanidad")?.Emision ?? null));
     setPenalesEmision(toDate(map.get("Antecedentes penales")?.Emision ?? null));
-    setPolicialesEmision(toDate(map.get("Antecedentes policiales")?.Emision ?? null));
+    setPolicialesEmision(
+      toDate(map.get("Antecedentes policiales")?.Emision ?? null)
+    );
 
     const defs = [
-      { key: "DNI", tipo: "cad" as const, fechaRaw: map.get("DNI")?.Caducidad ?? null },
-      { key: "Licencia", tipo: "cad" as const, fechaRaw: map.get("Licencia")?.Caducidad ?? null },
-      { key: "Carnet de sanidad", tipo: "emi" as const, fechaRaw: map.get("Carnet de sanidad")?.Emision ?? null },
-      { key: "Antecedentes penales", tipo: "emi" as const, fechaRaw: map.get("Antecedentes penales")?.Emision ?? null },
-      { key: "Antecedentes policiales", tipo: "emi" as const, fechaRaw: map.get("Antecedentes policiales")?.Emision ?? null },
+      {
+        key: "DNI",
+        tipo: "cad" as const,
+        fechaRaw: map.get("DNI")?.Caducidad ?? null,
+      },
+      {
+        key: "Licencia",
+        tipo: "cad" as const,
+        fechaRaw: map.get("Licencia")?.Caducidad ?? null,
+      },
+      {
+        key: "Carnet de sanidad",
+        tipo: "emi" as const,
+        fechaRaw: map.get("Carnet de sanidad")?.Emision ?? null,
+      },
+      {
+        key: "Antecedentes penales",
+        tipo: "emi" as const,
+        fechaRaw: map.get("Antecedentes penales")?.Emision ?? null,
+      },
+      {
+        key: "Antecedentes policiales",
+        tipo: "emi" as const,
+        fechaRaw: map.get("Antecedentes policiales")?.Emision ?? null,
+      },
     ];
 
     const withAtts: DocRow[] = [];
@@ -841,7 +947,10 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
       let attachments: Attach[] = [];
       if (r?.Id) {
         try {
-          const atts = await sp.web.lists.getByTitle(LST_DOCS).items.getById(r.Id).attachmentFiles();
+          const atts = await sp.web.lists
+            .getByTitle(LST_DOCS)
+            .items.getById(r.Id)
+            .attachmentFiles();
           attachments = (atts || []).map((a: any) => ({
             name: a.FileName,
             href: toAbs(siteUrl, a.ServerRelativeUrl),
@@ -866,12 +975,14 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
     setPolicialesFile(null);
   }
 
-  // Refrescar sólo una fila tras subir
   async function refreshDocRow(label: string, docTitle: string) {
     const it = await getDocItemByLabel(docTitle, label);
     let attachments: Attach[] = [];
     if (it?.Id) {
-      const atts = await sp.web.lists.getByTitle(LST_DOCS).items.getById(it.Id).attachmentFiles();
+      const atts = await sp.web.lists
+        .getByTitle(LST_DOCS)
+        .items.getById(it.Id)
+        .attachmentFiles();
       attachments = (atts || []).map((a: any) => ({
         name: a.FileName,
         href: toAbs(siteUrl, a.ServerRelativeUrl),
@@ -887,13 +998,14 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
     setTimeout(
       () =>
         setDocRows((prev) =>
-          prev.map((r) => (r.label === label ? { ...r, justUpdated: false } : r))
+          prev.map((r) =>
+            r.label === label ? { ...r, justUpdated: false } : r
+          )
         ),
       3000
     );
   }
 
-  // Subida inmediata por etiqueta
   async function uploadForRowByLabel(label: string) {
     if (!form.Documento?.trim()) {
       setError("Documento (Title) es obligatorio.");
@@ -916,7 +1028,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
     }
 
     const fields =
-      cur.tipo === "cad" ? { Caducidad: dateToISO(cur.fecha) } : { Emision: dateToISO(cur.fecha) };
+      cur.tipo === "cad"
+        ? { Caducidad: dateToISO(cur.fecha) }
+        : { Emision: dateToISO(cur.fecha) };
 
     try {
       await upsertDocRow(cur.label, fields, cur.file);
@@ -926,8 +1040,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
     }
   }
 
-  // Cargar desde la grilla de personas
-  async function loadFromGridItem(it: PersonaItem) {
+  async function loadFromGridItem(it: any) {
     setForm({
       Documento: it.Title ?? "",
       Nombre: it.Nombre ?? "",
@@ -954,12 +1067,19 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
   const modoOptions: IChoiceGroupOption[] = [
     { key: "Ingresar", text: "Ingresar", iconProps: { iconName: "Add" } },
     { key: "Modificar", text: "Modificar", iconProps: { iconName: "Edit" } },
-    { key: "Dar de baja", text: "Dar de baja", iconProps: { iconName: "Delete" } },
+    {
+      key: "Dar de baja",
+      text: "Dar de baja",
+      iconProps: { iconName: "Delete" },
+    },
   ];
 
   return (
     <ThemeProvider theme={theme}>
-      <Stack tokens={stackTokens} styles={{ root: { maxWidth: 1024, margin: "0 auto", padding: 12 } }}>
+      <Stack
+        tokens={stackTokens}
+        styles={{ root: { maxWidth: 1024, margin: "0 auto", padding: 12 } }}
+      >
         {/* Barra de modo */}
         <Stack
           horizontal
@@ -972,26 +1092,47 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
               borderRadius: 12,
               padding: 12,
               boxShadow: theme.effects.elevation8 as any,
+              width: "100%",
+              margin: "0 auto",
             },
           }}
         >
-          <Icon iconName="Contact" styles={{ root: { fontSize: 22, color: theme.palette.themePrimary } }} />
-          <Label styles={{ root: { fontSize: 18, fontWeight: 600 } }}>Registro de Personal</Label>
-          <StackItem grow />
-          <ChoiceGroup
-            selectedKey={modo}
-            options={modoOptions}
-            onChange={(_, opt) => {
-              const next = (opt?.key as Modo) ?? "Ingresar";
-              setModo(next);
-              if (next === "Ingresar") {
-                limpiar();
-                try {
-                  selectionRef.current?.setAllSelected(false);
-                } catch {}
-              }
+          <Icon
+            iconName="Contact"
+            styles={{
+              root: { fontSize: 22, color: theme.palette.themePrimary },
             }}
           />
+          <Label
+            styles={{
+              root: {
+                fontSize: 18,
+                fontWeight: 600,
+                color: theme.palette.themePrimary,
+              },
+            }}
+          >
+            Registro de Personal
+          </Label>
+          {/* acá centramos los tres modos */}
+          <StackItem grow>
+            <Stack horizontal horizontalAlign="center">
+              <ChoiceGroup
+                selectedKey={modo}
+                options={modoOptions}
+                onChange={(_, opt) => {
+                  const next = (opt?.key as Modo) ?? "Ingresar";
+                  setModo(next);
+                  if (next === "Ingresar") {
+                    limpiar();
+                    try {
+                      selectionRef.current?.setAllSelected(false);
+                    } catch {}
+                  }
+                }}
+              />
+            </Stack>
+          </StackItem>
         </Stack>
 
         {/* Grilla de personas del proveedor */}
@@ -1008,7 +1149,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
             }}
           >
             <Label styles={{ root: { fontWeight: 600 } }}>
-              Registros del proveedor: {proveedorTitleOculto || "(sin proveedor)"}
+              Registros del proveedor:{" "}
+              {proveedorTitleOculto || "(sin proveedor)"}
             </Label>
 
             {cargandoGrid ? (
@@ -1024,8 +1166,13 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                 />
 
                 {itemsProveedorFiltrados.length === 0 ? (
-                  <MessageBar messageBarType={MessageBarType.info} isMultiline={false}>
-                    {queryGrid ? "Sin resultados para la búsqueda." : "No hay registros."}
+                  <MessageBar
+                    messageBarType={MessageBarType.info}
+                    isMultiline={false}
+                  >
+                    {queryGrid
+                      ? "Sin resultados para la búsqueda."
+                      : "No hay registros."}
                   </MessageBar>
                 ) : (
                   <div style={{ width: "100%", overflowX: "auto" }}>
@@ -1051,7 +1198,10 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
 
         {/* Mensajes */}
         {mensaje && (
-          <MessageBar messageBarType={MessageBarType.success} isMultiline={false}>
+          <MessageBar
+            messageBarType={MessageBarType.success}
+            isMultiline={false}
+          >
             {mensaje}
           </MessageBar>
         )}
@@ -1078,8 +1228,22 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
             },
           }}
         >
-          <Label styles={{ root: { fontWeight: 600, fontSize: 16 } }}>Datos personales</Label>
-          <input type="hidden" name="ProveedorTitle" value={proveedorTitleOculto} />
+          <Label
+            styles={{
+              root: {
+                fontWeight: 600,
+                fontSize: 16,
+                color: theme.palette.themePrimary,
+              },
+            }}
+          >
+            Datos personales
+          </Label>
+          <input
+            type="hidden"
+            name="ProveedorTitle"
+            value={proveedorTitleOculto}
+          />
 
           <Stack horizontal wrap tokens={stackTokens}>
             <StackItem grow styles={{ root: { minWidth: 200 } }}>
@@ -1088,6 +1252,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                 value={form.Nombre}
                 onChange={(_, v) => onChange("Nombre", v || "")}
                 required={modo !== "Dar de baja"}
+                styles={roundedField}
               />
             </StackItem>
           </Stack>
@@ -1098,6 +1263,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                 label="Apellido paterno"
                 value={form.ApellidoPaterno}
                 onChange={(_, v) => onChange("ApellidoPaterno", v || "")}
+                styles={roundedField}
               />
             </StackItem>
           </Stack>
@@ -1108,6 +1274,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                 label="Apellido materno"
                 value={form.ApellidoMaterno}
                 onChange={(_, v) => onChange("ApellidoMaterno", v || "")}
+                styles={roundedField}
               />
             </StackItem>
           </Stack>
@@ -1118,7 +1285,10 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                 label="Tipo de documento"
                 options={opcionesTipoDocumento}
                 selectedKey={form.TipoDocumento}
-                onChange={(_, opt) => onChange("TipoDocumento", String(opt?.key))}
+                onChange={(_, opt) =>
+                  onChange("TipoDocumento", String(opt?.key))
+                }
+                styles={roundedDropdown}
               />
             </StackItem>
             <StackItem grow styles={{ root: { minWidth: 200 } }}>
@@ -1127,6 +1297,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                 value={form.Documento}
                 onChange={(_, v) => onChange("Documento", v || "")}
                 required
+                styles={roundedField}
               />
             </StackItem>
             <StackItem grow styles={{ root: { minWidth: 200 } }}>
@@ -1146,11 +1317,17 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                   setForm((prev) => ({
                     ...prev,
                     Puesto: nuevo,
-                    Especificar: nuevo.toLowerCase() === "otro" ? prev.Especificar : "",
-                    Licencia: nuevo.toLowerCase() === "conductor" ? prev.Licencia : "",
-                    Categoria: nuevo.toLowerCase() === "conductor" ? prev.Categoria : undefined,
+                    Especificar:
+                      nuevo.toLowerCase() === "otro" ? prev.Especificar : "",
+                    Licencia:
+                      nuevo.toLowerCase() === "conductor" ? prev.Licencia : "",
+                    Categoria:
+                      nuevo.toLowerCase() === "conductor"
+                        ? prev.Categoria
+                        : undefined,
                   }));
                 }}
+                styles={roundedDropdown}
               />
             </StackItem>
 
@@ -1160,6 +1337,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                   label="Especificar (otro)"
                   value={form.Especificar}
                   onChange={(_, v) => onChange("Especificar", v || "")}
+                  styles={roundedField}
                 />
               </StackItem>
             )}
@@ -1172,6 +1350,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                   label="Licencia"
                   value={form.Licencia}
                   onChange={(_, v) => onChange("Licencia", v || "")}
+                  styles={roundedField}
                 />
               </StackItem>
               <StackItem grow styles={{ root: { minWidth: 200 } }}>
@@ -1180,6 +1359,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                   options={opcionesCategoria}
                   selectedKey={form.Categoria}
                   onChange={(_, opt) => onChange("Categoria", String(opt?.key))}
+                  styles={roundedDropdown}
                 />
               </StackItem>
             </Stack>
@@ -1198,7 +1378,17 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
             },
           }}
         >
-          <Label styles={{ root: { fontWeight: 600, fontSize: 16 } }}>Notificaciones</Label>
+          <Label
+            styles={{
+              root: {
+                fontWeight: 600,
+                fontSize: 16,
+                color: theme.palette.themePrimary,
+              },
+            }}
+          >
+            Notificaciones
+          </Label>
           <Stack horizontal wrap tokens={stackTokens}>
             <StackItem grow styles={{ root: { minWidth: 200 } }}>
               <TextField
@@ -1208,6 +1398,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                 onChange={(_, v) => onChange("CorreosNotificacion", v || "")}
                 multiline
                 autoAdjustHeight
+                styles={roundedField}
               />
             </StackItem>
           </Stack>
@@ -1215,7 +1406,17 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
 
         {/* Sección 3 - Documentación */}
         <Stack tokens={{ childrenGap: 12 }}>
-          <Label styles={{ root: { fontWeight: 600, fontSize: 16 } }}>Documentación</Label>
+          <Label
+            styles={{
+              root: {
+                fontWeight: 600,
+                fontSize: 16,
+                color: theme.palette.themePrimary,
+              },
+            }}
+          >
+            Documentación
+          </Label>
 
           {modo === "Ingresar" && (
             <>
@@ -1269,8 +1470,12 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
           {modo === "Modificar" && (
             <Stack tokens={{ childrenGap: 8 }}>
               {!form.Documento?.trim() && (
-                <MessageBar messageBarType={MessageBarType.info} isMultiline={false}>
-                  Seleccioná un registro en la grilla superior para ver su documentación.
+                <MessageBar
+                  messageBarType={MessageBarType.info}
+                  isMultiline={false}
+                >
+                  Seleccioná un registro en la grilla superior para ver su
+                  documentación.
                 </MessageBar>
               )}
               <DetailsList
@@ -1282,7 +1487,11 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                     name: "Documento",
                     minWidth: 180,
                     onRender: (r: DocRow) => (
-                      <span style={{ color: r.justUpdated ? "green" : undefined }}>{r.label}</span>
+                      <span
+                        style={{ color: r.justUpdated ? "green" : undefined }}
+                      >
+                        {r.label}
+                      </span>
                     ),
                   },
                   {
@@ -1290,7 +1499,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                     name: "Fecha",
                     minWidth: 160,
                     onRender: (r: DocRow) => (
-                      <span style={{ color: r.justUpdated ? "green" : undefined }}>
+                      <span
+                        style={{ color: r.justUpdated ? "green" : undefined }}
+                      >
                         {r.fecha ? r.fecha.toLocaleDateString() : "-"}{" "}
                         <i>({r.tipo === "cad" ? "Caducidad" : "Emisión"})</i>
                       </span>
@@ -1304,7 +1515,12 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                       r.attachments?.length ? (
                         <Stack tokens={{ childrenGap: 4 }}>
                           {r.attachments.map((a) => (
-                            <a key={a.href} href={a.href} target="_blank" rel="noopener noreferrer">
+                            <a
+                              key={a.href}
+                              href={a.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
                               {a.name}
                             </a>
                           ))}
@@ -1319,11 +1535,18 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                     minWidth: 340,
                     onRender: (r: DocRow) =>
                       r.editing ? (
-                        <Stack horizontal tokens={{ childrenGap: 8 }} verticalAlign="center">
+                        <Stack
+                          horizontal
+                          tokens={{ childrenGap: 8 }}
+                          verticalAlign="center"
+                        >
                           <input
                             type="file"
                             onChange={(e) => {
-                              const file = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+                              const file =
+                                e.target.files && e.target.files[0]
+                                  ? e.target.files[0]
+                                  : null;
                               setDocRows((prev) => {
                                 const next = prev.slice(0);
                                 for (let i = 0; i < next.length; i++) {
@@ -1353,7 +1576,11 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                                 const next = prev.slice(0);
                                 for (let i = 0; i < next.length; i++) {
                                   if (next[i].label === r.label) {
-                                    next[i] = { ...next[i], editing: false, justUpdated: true };
+                                    next[i] = {
+                                      ...next[i],
+                                      editing: false,
+                                      justUpdated: true,
+                                    };
                                     break;
                                   }
                                 }
@@ -1362,7 +1589,10 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                                     const n2 = p2.slice(0);
                                     for (let j = 0; j < n2.length; j++)
                                       if (n2[j].label === r.label)
-                                        n2[j] = { ...n2[j], justUpdated: false };
+                                        n2[j] = {
+                                          ...n2[j],
+                                          justUpdated: false,
+                                        };
                                     return n2;
                                   });
                                 }, 3000);
@@ -1377,7 +1607,11 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
                                 const next = prev.slice(0);
                                 for (let i = 0; i < next.length; i++) {
                                   if (next[i].label === r.label) {
-                                    next[i] = { ...next[i], editing: false, file: null };
+                                    next[i] = {
+                                      ...next[i],
+                                      editing: false,
+                                      file: null,
+                                    };
                                     break;
                                   }
                                 }
@@ -1412,8 +1646,16 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({ sp, siteUrl, filtr
 
         {/* Sección 4 - Acciones */}
         <Stack horizontal wrap tokens={stackTokens} verticalAlign="center">
-          <PrimaryButton text="Guardar" onClick={onGuardar} disabled={guardando || !!errorDocs || !!error} />
-          <DefaultButton text="Cancelar" onClick={onCancelar} disabled={guardando} />
+          <PrimaryButton
+            text="Guardar"
+            onClick={onGuardar}
+            disabled={guardando || !!errorDocs || !!error}
+          />
+          <DefaultButton
+            text="Cancelar"
+            onClick={onCancelar}
+            disabled={guardando}
+          />
           {guardando && (
             <StackItem grow>
               <ProgressIndicator label="Guardando..." />

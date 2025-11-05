@@ -8,6 +8,11 @@ export const classes = mergeStyleSets({
     position: "relative",
     background: theme.semanticColors.bodyBackground,
   },
+  panel: {
+    background: "#fff",
+    borderRadius: 20,
+    padding: 20,              
+  },
   page: { maxWidth: 1180, margin: "0 auto", padding: "16px 20px 28px" },
   busyMask: { pointerEvents: "none", opacity: 0.6, filter: "grayscale(30%)" },
   overlay: {
