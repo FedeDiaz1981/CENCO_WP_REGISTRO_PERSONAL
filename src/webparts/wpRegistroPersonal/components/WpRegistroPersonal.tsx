@@ -26,6 +26,9 @@ import {
   SpinnerSize,
   Selection,
   SearchBox,
+  Dialog,
+  DialogType,
+  DialogFooter,
 } from "@fluentui/react";
 
 import "@pnp/sp/webs";
@@ -40,6 +43,8 @@ export interface IRegistroPersonalProps {
   sp: SPFI;
   siteUrl: string;
   filtrarPorProveedor: boolean;
+  borrar: boolean; // toggle de la webpart
+  bloquearEmpresa: boolean; // ✅ NUEVO: si true bloquea y autodetecta, si false deja elegir
 }
 
 type Modo = "Ingresar" | "Modificar" | "Dar de baja";
@@ -80,10 +85,17 @@ const opcionesCategoria: IDropdownOption[] = [
 
 const LST_PERSONAS = "Personal";
 const LST_DOCS = "Documentacion";
+const LST_PROVEEDORES = "Proveedores";
 
-const stackTokens = { childrenGap: 12 };
+// tokens de Stack
+const stackTokens: { childrenGap: number } = { childrenGap: 12 };
+
 const esc = (s: string) => s.replace(/'/g, "''");
 const dateToISO = (d?: Date | null) => (d ? d.toISOString() : null);
+
+// helper para limpiar HTML del campo de correos
+const stripHtml = (html?: string | null): string =>
+  html ? html.replace(/<[^>]*>/g, "").trim() : "";
 
 type DocFields = { Caducidad?: string | null; Emision?: string | null };
 
@@ -132,100 +144,6 @@ const roundedDatePicker = {
   },
 };
 
-// ---- Mini componente: Tarjeta documento (para INGRESAR) ----
-interface DocCardProps {
-  title: string;
-  dateLabel: string;
-  dateValue: Date | null;
-  onDateChange: (date: Date | null) => void;
-  file: File | null;
-  onFileChange: (file: File | null) => void;
-}
-
-const DocCard: React.FC<DocCardProps> = ({
-  title,
-  dateLabel,
-  dateValue,
-  onDateChange,
-  file,
-  onFileChange,
-}) => {
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-  return (
-    <Stack
-      horizontal
-      wrap
-      verticalAlign="end"
-      tokens={{ childrenGap: 12 }}
-      styles={{
-        root: {
-          border: `1px solid ${theme.palette.neutralLight}`,
-          borderRadius: 12,
-          padding: 12,
-          boxShadow: theme.effects.elevation8,
-          background: theme.palette.white,
-        },
-      }}
-    >
-      <StackItem styles={{ root: { minWidth: 160 } }}>
-        <Label
-          styles={{
-            root: { fontWeight: 600, color: theme.palette.themePrimary },
-          }}
-        >
-          {title}
-        </Label>
-      </StackItem>
-      <StackItem grow styles={{ root: { minWidth: 220, maxWidth: 320 } }}>
-        <DatePicker
-          label={dateLabel}
-          value={dateValue || undefined}
-          onSelectDate={(d) => onDateChange(d ?? null)}
-          firstDayOfWeek={DayOfWeek.Monday}
-          placeholder="Seleccionar fecha"
-          ariaLabel={dateLabel}
-          styles={roundedDatePicker}
-        />
-      </StackItem>
-      <StackItem grow styles={{ root: { minWidth: 220, maxWidth: 340 } }}>
-        <Label>Archivo adjunto</Label>
-        <input
-          ref={fileInputRef}
-          type="file"
-          style={{ display: "none" }}
-          onChange={(e) =>
-            onFileChange(
-              e.target.files && e.target.files.length ? e.target.files[0] : null
-            )
-          }
-        />
-        <Stack horizontal tokens={{ childrenGap: 8 }} verticalAlign="center">
-          <DefaultButton
-            iconProps={{ iconName: "Upload" }}
-            text={file ? "Cambiar archivo" : "Adjuntar"}
-            onClick={() => fileInputRef.current?.click()}
-          />
-          {file && (
-            <Stack
-              horizontal
-              tokens={{ childrenGap: 6 }}
-              verticalAlign="center"
-            >
-              <Icon iconName="Page" />
-              <span style={{ wordBreak: "break-all" }}>{file.name}</span>
-              <DefaultButton
-                text="Quitar"
-                onClick={() => onFileChange(null)}
-                styles={{ root: { marginLeft: 6 } }}
-              />
-            </Stack>
-          )}
-        </Stack>
-      </StackItem>
-    </Stack>
-  );
-};
-
 // ====== Grilla de documentación para MODIFICAR ======
 type Attach = { name: string; href: string };
 
@@ -264,6 +182,170 @@ const makeDefaultDocRows = (): DocRow[] =>
     file: null,
   }));
 
+// ---- Mini componente: Tarjeta documento ----
+interface DocCardProps {
+  title: string;
+  dateLabel: string;
+  dateValue: Date | null;
+  onDateChange: (date: Date | null) => void;
+  file: File | null;
+  onFileChange: (file: File | null) => void;
+  attachments?: Attach[];
+}
+
+// strings del DatePicker en español
+const datePickerStringsEs = {
+  months: [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+  ],
+  shortMonths: [
+    "ene",
+    "feb",
+    "mar",
+    "abr",
+    "may",
+    "jun",
+    "jul",
+    "ago",
+    "sep",
+    "oct",
+    "nov",
+    "dic",
+  ],
+  days: [
+    "domingo",
+    "lunes",
+    "martes",
+    "miércoles",
+    "jueves",
+    "viernes",
+    "sábado",
+  ],
+  shortDays: ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"],
+  goToToday: "Ir a hoy",
+  calendarDayFormat: "dddd D",
+  monthPickerHeaderAriaLabel: "{0}, elija un mes",
+  yearPickerHeaderAriaLabel: "{0}, elija un año",
+};
+
+// formato de fecha dd/mm/aaaa
+const formatDateEs = (date?: Date) =>
+  date ? date.toLocaleDateString("es-ES") : "";
+
+const DocCard: React.FC<DocCardProps> = ({
+  title,
+  dateLabel,
+  dateValue,
+  onDateChange,
+  file,
+  onFileChange,
+  attachments,
+}) => {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const ocultarArchivo = title === "DNI" || title === "Licencia";
+
+  return (
+    <Stack
+      tokens={{ childrenGap: 8 }}
+      styles={{
+        root: {
+          border: `1px solid ${theme.palette.neutralLight}`,
+          borderRadius: 12,
+          padding: 12,
+          boxShadow: theme.effects.elevation8 as any,
+          background: theme.palette.white,
+          minWidth: 240,
+          maxWidth: 260,
+        },
+      }}
+    >
+      <Label
+        styles={{
+          root: {
+            fontWeight: 600,
+            color: theme.palette.themePrimary,
+          },
+        }}
+      >
+        {title}
+      </Label>
+
+      <DatePicker
+        label={dateLabel}
+        value={dateValue || undefined}
+        onSelectDate={(d) => onDateChange(d ?? null)}
+        firstDayOfWeek={DayOfWeek.Monday}
+        placeholder="dd/mm/aaaa"
+        ariaLabel={dateLabel}
+        strings={datePickerStringsEs}
+        formatDate={formatDateEs}
+        styles={roundedDatePicker}
+        // ✅ FIX: evita salto de scroll/foco al top cuando está dentro de un Modal/Dialog
+        calloutProps={{
+          doNotLayer: true,
+          setInitialFocus: false,
+        }}
+      />
+
+      {!ocultarArchivo && (
+        <div>
+          <Label>Adjuntar archivo</Label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            style={{ display: "none" }}
+            onChange={(e) =>
+              onFileChange(
+                e.target.files && e.target.files.length
+                  ? e.target.files[0]
+                  : null
+              )
+            }
+          />
+          <DefaultButton
+            text="Adjuntar archivo"
+            iconProps={{ iconName: "Upload" }}
+            onClick={() => fileInputRef.current?.click()}
+          />
+          <div style={{ fontSize: 12, marginTop: 4 }}>
+            {file ? file.name : "-"}
+          </div>
+        </div>
+      )}
+
+      {attachments && attachments.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <Label>Archivos actuales</Label>
+          <Stack tokens={{ childrenGap: 4 }}>
+            {attachments.map((a) => (
+              <a
+                key={a.href}
+                href={a.href}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {a.name}
+              </a>
+            ))}
+          </Stack>
+        </div>
+      )}
+    </Stack>
+  );
+};
+
 // ===== Helpers de fechas =====
 const today0 = () => {
   const d = new Date();
@@ -293,12 +375,34 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   sp,
   siteUrl,
   filtrarPorProveedor,
+  borrar,
+  bloquearEmpresa,
 }) => {
   const [modo, setModo] = React.useState<Modo>("Ingresar");
+
+  // Proveedor seleccionado / detectado
   const [proveedorTitleOculto, setProveedorTitleOculto] = React.useState("");
   const [proveedorId, setProveedorId] = React.useState<number | null>(null);
 
-  // -------- Sección 2: Personal --------
+  // Dropdown proveedores (modo editable)
+  const [proveedoresOptions, setProveedoresOptions] = React.useState<
+    IDropdownOption[]
+  >([]);
+  const proveedoresByIdRef = React.useRef<Map<number, string>>(new Map());
+
+  // ✅ fuerza remount del form (limpia controles con estado interno, ej: Dropdown/File)
+  const [formKey, setFormKey] = React.useState(0);
+
+  // ✅ ancla superior para volver arriba al limpiar
+  const topRef = React.useRef<HTMLDivElement | null>(null);
+  const scrollToTop = () => {
+    if (topRef.current) {
+      topRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const [form, setForm] = React.useState<PersonaForm>({
     Documento: "",
     Nombre: "",
@@ -312,16 +416,29 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     CorreosNotificacion: "",
   });
 
-  // ===== visibilidad dinámica por Puesto =====
-  const puestoNorm = (form.Puesto || "").toLowerCase().trim();
-  const showEspecificar = React.useMemo(
-    () => puestoNorm === "otro",
-    [puestoNorm]
-  );
-  const showLicenciaCat = React.useMemo(
-    () => puestoNorm === "conductor",
-    [puestoNorm]
-  );
+  const isDarDeBaja = modo === "Dar de baja";
+
+  // ✅ Touch: cuando el usuario edita cualquier cosa, limpiamos el error para re-habilitar Guardar
+  const [guardando, setGuardando] = React.useState(false);
+  const [mensaje, setMensaje] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const touch = () => {
+    setError(null);
+    // setMensaje(null);
+  };
+
+  const setDateAndTouch =
+    (setter: (d: Date | null) => void) => (d: Date | null) => {
+      touch();
+      setter(d);
+    };
+
+  const setFileAndTouch =
+    (setter: (f: File | null) => void) => (f: File | null) => {
+      touch();
+      setter(f);
+    };
 
   // -------- Sección 3: Documentación (para Ingresar) --------
   const [dniCaducidad, setDniCaducidad] = React.useState<Date | null>(null);
@@ -337,12 +454,163 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   );
   const [policialesFile, setPolicialesFile] = React.useState<File | null>(null);
 
-  // ---- Estado de grilla de documentación (Modificar) ----
+  // ---- Estado de documentación (Modificar) ----
   const [docRows, setDocRows] = React.useState<DocRow[]>(makeDefaultDocRows());
 
-  const [guardando, setGuardando] = React.useState(false);
-  const [mensaje, setMensaje] = React.useState<string | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
+  // confirmación de baja
+  const [showConfirmBaja, setShowConfirmBaja] = React.useState(false);
+  const [motivoBaja, setMotivoBaja] = React.useState("");
+
+  // ===== bloqueo de Datos laborales según documento =====
+  const laboralBloqueado = React.useMemo(() => {
+    const tipo = form.TipoDocumento || "";
+    const len = (form.Documento || "").trim().length;
+
+    if (!tipo) return true;
+    if (tipo === "DNI") return len < 8;
+    return len < 9; // Pasaporte o Carnet
+  }, [form.TipoDocumento, form.Documento]);
+
+  // ===== visibilidad dinámica por Puesto =====
+  const puestoNorm = (form.Puesto || "").toLowerCase().trim();
+  const showEspecificar = React.useMemo(
+    () => puestoNorm === "otro",
+    [puestoNorm]
+  );
+  const showLicenciaCat = React.useMemo(
+    () => puestoNorm === "conductor",
+    [puestoNorm]
+  );
+
+  // =======================
+  // Proveedores: cargar opciones SIEMPRE (para el modo editable)
+  // =======================
+  React.useEffect(() => {
+    let cancelado = false;
+
+    const cargarProveedores = async () => {
+      try {
+        const items = await sp.web.lists
+          .getByTitle(LST_PROVEEDORES)
+          .items.select("Id", "Title")
+          .orderBy("Title", true)
+          .top(5000)();
+
+        if (cancelado) return;
+
+        const map = new Map<number, string>();
+        const opts: IDropdownOption[] = (items as any[]).map((it) => {
+          const id = Number(it.Id);
+          const title = String(it.Title || "");
+          map.set(id, title);
+          return { key: id, text: title };
+        });
+
+        proveedoresByIdRef.current = map;
+        setProveedoresOptions(opts);
+
+        // Si está editable y todavía no hay título pero sí hay Id, lo sincronizamos
+        if (!bloquearEmpresa && proveedorId && !proveedorTitleOculto) {
+          const t = map.get(proveedorId) || "";
+          if (t) setProveedorTitleOculto(t);
+        }
+      } catch {
+        if (!cancelado) {
+          proveedoresByIdRef.current = new Map();
+          setProveedoresOptions([]);
+        }
+      }
+    };
+
+    cargarProveedores().catch(() => {});
+    return () => {
+      cancelado = true;
+    };
+  }, [sp, bloquearEmpresa, proveedorId, proveedorTitleOculto]);
+
+  // =======================
+  // Meta lookup Proveedor (para armar payload correcto)
+  // =======================
+  type LookupMeta = {
+    InternalName: string;
+    TypeAsString: string;
+    AllowMultipleValues?: boolean;
+  };
+  const [provFieldMeta, setProvFieldMeta] = React.useState<LookupMeta | null>(
+    null
+  );
+
+  const buildProveedorPayload = () => {
+    if (!proveedorId || !provFieldMeta) return {};
+    const key = `${provFieldMeta.InternalName}Id`;
+    const tas = (provFieldMeta.TypeAsString || "").toLowerCase();
+    const isMulti =
+      provFieldMeta.AllowMultipleValues === true || tas.indexOf("multi") !== -1;
+    return isMulti
+      ? { [key]: { results: [proveedorId] } }
+      : { [key]: proveedorId };
+  };
+
+  // =======================
+  // Si bloquearEmpresa=true => autodetectar proveedor por usuario (comportamiento actual)
+  // Si bloquearEmpresa=false => NO pisar selección (queda editable)
+  // =======================
+  React.useEffect(() => {
+    let cancelado = false;
+
+    const cargarMetaYProveedorUsuario = async () => {
+      try {
+        // Meta campo Proveedor (siempre, porque lo necesitamos para guardar)
+        const f = await sp.web.lists
+          .getByTitle(LST_PERSONAS)
+          .fields.getByInternalNameOrTitle("Proveedor")
+          .select("InternalName", "TypeAsString", "AllowMultipleValues")();
+
+        if (!cancelado)
+          setProvFieldMeta({
+            InternalName: f.InternalName,
+            TypeAsString: f.TypeAsString,
+            AllowMultipleValues: (f as any).AllowMultipleValues,
+          });
+
+        // Autodetect SOLO si está bloqueado
+        if (!bloquearEmpresa) return;
+
+        const me = await sp.web.currentUser();
+        let items = await sp.web.lists
+          .getByTitle(LST_PROVEEDORES)
+          .items.select("Id", "Title", "Usuarios/Id")
+          .expand("Usuarios")
+          .filter(`Usuarios/Id eq ${me.Id}`)
+          .top(1)();
+
+        if (!items?.length) {
+          items = await sp.web.lists
+            .getByTitle(LST_PROVEEDORES)
+            .items.select("Id", "Title", "UsuariosId")
+            .filter(`UsuariosId eq ${me.Id}`)
+            .top(1)();
+        }
+
+        if (!cancelado && items?.[0]) {
+          setProveedorTitleOculto(items[0].Title);
+          setProveedorId(items[0].Id);
+        }
+      } catch {
+        // ignoramos
+      }
+    };
+
+    cargarMetaYProveedorUsuario().catch(() => {});
+    return () => {
+      cancelado = true;
+    };
+  }, [sp, bloquearEmpresa]);
+
+  const onChange = (field: keyof PersonaForm, value?: string) => {
+    touch();
+    setForm((prev) => ({ ...prev, [field]: value ?? "" }));
+  };
 
   // ---- Validación de antigüedad ----
   const errorDocs = React.useMemo(() => {
@@ -416,20 +684,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   };
 
   const columns: IColumn[] = [
-    {
-      key: "doc",
-      name: "Documento",
-      fieldName: "Title",
-      minWidth: 120,
-      isResizable: true,
-    },
-    {
-      key: "nom",
-      name: "Nombre",
-      fieldName: "Nombre",
-      minWidth: 120,
-      isResizable: true,
-    },
+    { key: "doc", name: "Documento", fieldName: "Title", minWidth: 120, isResizable: true },
+    { key: "nom", name: "Nombre", fieldName: "Nombre", minWidth: 120, isResizable: true },
     {
       key: "ap",
       name: "Ap. paterno",
@@ -444,20 +700,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       minWidth: 120,
       isResizable: true,
     },
-    {
-      key: "pto",
-      name: "Puesto",
-      fieldName: "puesto",
-      minWidth: 120,
-      isResizable: true,
-    },
-    {
-      key: "cat",
-      name: "Categoría",
-      fieldName: "Categoria",
-      minWidth: 90,
-      isResizable: true,
-    },
+    { key: "pto", name: "Puesto", fieldName: "puesto", minWidth: 120, isResizable: true },
+    { key: "cat", name: "Categoría", fieldName: "Categoria", minWidth: 90, isResizable: true },
   ];
 
   const [itemsProveedor, setItemsProveedor] = React.useState<PersonaItem[]>([]);
@@ -525,21 +769,22 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
             "Licencia",
             "Categoria",
             "ProveedorId",
-            "correosnotificacion"
+            "correosnotificacion",
+            "activo"
           )
           .orderBy("Id", false)
           .top(5000);
 
-        if (filtrarPorProveedor) {
-          if (!proveedorId) {
-            if (!cancelado) {
-              setItemsProveedor([]);
-              setCargandoGrid(false);
-            }
-            return;
-          }
-          query = query.filter(`ProveedorId eq ${proveedorId}`);
+        let filter = "activo eq 1";
+
+        // Si se debe filtrar por proveedor:
+        // - bloquearEmpresa=true => proveedorId viene del usuario
+        // - bloquearEmpresa=false => proveedorId viene del dropdown
+        if (filtrarPorProveedor && proveedorId) {
+          filter += ` and ProveedorId eq ${proveedorId}`;
         }
+
+        query = query.filter(filter);
 
         const items = await query();
 
@@ -562,70 +807,6 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     };
   }, [modo, sp, filtrarPorProveedor, proveedorId]);
 
-  // Meta lookup Proveedor
-  type LookupMeta = {
-    InternalName: string;
-    TypeAsString: string;
-    AllowMultipleValues?: boolean;
-  };
-  const [provFieldMeta, setProvFieldMeta] = React.useState<LookupMeta | null>(
-    null
-  );
-
-  const buildProveedorPayload = () => {
-    if (!proveedorId || !provFieldMeta) return {};
-    const key = `${provFieldMeta.InternalName}Id`;
-    const tas = (provFieldMeta.TypeAsString || "").toLowerCase();
-    const isMulti =
-      provFieldMeta.AllowMultipleValues === true || tas.indexOf("multi") !== -1;
-    return isMulti
-      ? { [key]: { results: [proveedorId] } }
-      : { [key]: proveedorId };
-  };
-
-  React.useEffect(() => {
-    let cancelado = false;
-    const cargar = async () => {
-      try {
-        const f = await sp.web.lists
-          .getByTitle(LST_PERSONAS)
-          .fields.getByInternalNameOrTitle("Proveedor")
-          .select("InternalName", "TypeAsString", "AllowMultipleValues")();
-        if (!cancelado)
-          setProvFieldMeta({
-            InternalName: f.InternalName,
-            TypeAsString: f.TypeAsString,
-          });
-
-        const me = await sp.web.currentUser();
-        let items = await sp.web.lists
-          .getByTitle("Proveedores")
-          .items.select("Id", "Title", "Usuarios/Id")
-          .expand("Usuarios")
-          .filter(`Usuarios/Id eq ${me.Id}`)
-          .top(1)();
-        if (!items?.length) {
-          items = await sp.web.lists
-            .getByTitle("Proveedores")
-            .items.select("Id", "Title", "UsuariosId")
-            .filter(`UsuariosId eq ${me.Id}`)
-            .top(1)();
-        }
-        if (!cancelado && items?.[0]) {
-          setProveedorTitleOculto(items[0].Title);
-          setProveedorId(items[0].Id);
-        }
-      } catch {}
-    };
-    cargar().catch(() => {});
-    return () => {
-      cancelado = true;
-    };
-  }, [sp]);
-
-  const onChange = (field: keyof PersonaForm, value?: string) =>
-    setForm((prev) => ({ ...prev, [field]: value ?? "" }));
-
   React.useEffect(() => {
     if (modo === "Modificar") {
       if (form.Documento?.trim()) {
@@ -638,7 +819,10 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     }
   }, [modo, form.Documento]);
 
-  const limpiar = () => {
+  // ✅ limpiar configurable + remount + scroll arriba
+  const limpiar = (opts?: { keepMessages?: boolean }) => {
+    const keepMessages = opts?.keepMessages === true;
+
     setForm({
       Documento: "",
       Nombre: "",
@@ -651,6 +835,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       Categoria: undefined,
       CorreosNotificacion: "",
     });
+
     setDniCaducidad(null);
     setDniFile(null);
     setLicCaducidad(null);
@@ -661,9 +846,31 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     setPenalesFile(null);
     setPolicialesEmision(null);
     setPolicialesFile(null);
-    setMensaje(null);
-    setError(null);
+
     setDocRows(makeDefaultDocRows());
+
+    setShowConfirmBaja(false);
+    setMotivoBaja("");
+
+    if (!keepMessages) {
+      setMensaje(null);
+      setError(null);
+    } else {
+      setError(null);
+    }
+
+    // fuerza remount
+    setFormKey((k) => k + 1);
+
+    // limpia selección
+    try {
+      selectionRef.current?.setAllSelected(false);
+    } catch {
+      // nada
+    }
+
+    // ✅ volver arriba
+    requestAnimationFrame(() => scrollToTop());
   };
 
   const findPersonaByDocumento = async (doc: string) => {
@@ -685,8 +892,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       otro: form.Especificar,
       Licencia: form.Licencia,
       Categoria: form.Categoria,
-      correosnotificacion: form.CorreosNotificacion,
-      ...buildProveedorPayload(),
+      correosnotificacion: stripHtml(form.CorreosNotificacion),
+      ...buildProveedorPayload(), // ✅ usa proveedorId actual (detectado o elegido)
     });
 
   const actualizarEnPersonas = async (id: number) =>
@@ -702,20 +909,18 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         otro: form.Especificar,
         Licencia: form.Licencia,
         Categoria: form.Categoria,
-        correosnotificacion: form.CorreosNotificacion,
-        ...buildProveedorPayload(),
+        correosnotificacion: stripHtml(form.CorreosNotificacion),
+        ...buildProveedorPayload(), // ✅ usa proveedorId actual (detectado o elegido)
       });
 
   const eliminarEnPersonas = async (id: number) =>
     sp.web.lists.getByTitle(LST_PERSONAS).items.getById(id).delete();
 
-  const addDocItem = async (
-    label: string,
-    fields: DocFields
-  ): Promise<number> => {
+  const addDocItem = async (label: string, fields: DocFields): Promise<number> => {
     const payload: any = { Title: form.Documento, Documento: label };
     if (fields.Caducidad !== undefined) payload.Caducidad = fields.Caducidad;
     if (fields.Emision !== undefined) payload.Emision = fields.Emision;
+
     const add = await sp.web.lists.getByTitle(LST_DOCS).items.add(payload);
     const idFromData = Number((add as any)?.data?.Id ?? (add as any)?.data?.ID);
     if (idFromData && !isNaN(idFromData)) return idFromData;
@@ -766,18 +971,18 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         for (let i = 0; i < current.length; i++) {
           try {
             await item.attachmentFiles.getByName(current[i].FileName).delete();
-          } catch {}
+          } catch {
+            // ignoramos
+          }
         }
       }
-    } catch {}
+    } catch {
+      // ignoramos
+    }
     await item.attachmentFiles.add(file.name, file);
   };
 
-  const upsertDocRow = async (
-    label: string,
-    fields: DocFields,
-    file?: File | null
-  ) => {
+  const upsertDocRow = async (label: string, fields: DocFields, file?: File | null) => {
     if (!form.Documento?.trim())
       throw new Error("Documento (Title) es obligatorio para Documentación.");
     const existing = await getDocItemByLabel(form.Documento, label);
@@ -788,105 +993,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     } else {
       id = await addDocItem(label, fields);
     }
-    if (!id || isNaN(id))
-      throw new Error("No se pudo obtener Id de Documentación.");
+    if (!id || isNaN(id)) throw new Error("No se pudo obtener Id de Documentación.");
     if (file) await attachFile(id, file);
-  };
-
-  const onGuardar = async () => {
-    setMensaje(null);
-    setError(null);
-
-    if (!form.Documento?.trim()) {
-      setError("Documento es obligatorio.");
-      return;
-    }
-    if (modo !== "Dar de baja" && !form.Nombre?.trim()) {
-      setError("Nombre es obligatorio.");
-      return;
-    }
-    if (errorDocs) {
-      setError(errorDocs);
-      return;
-    }
-
-    setGuardando(true);
-    try {
-      if (modo === "Ingresar") {
-        await crearEnPersonas();
-
-        await upsertDocRow(
-          "DNI",
-          { Caducidad: dateToISO(dniCaducidad) },
-          dniFile ?? undefined
-        );
-
-        if (showLicenciaCat) {
-          await upsertDocRow(
-            "Licencia",
-            { Caducidad: dateToISO(licCaducidad) },
-            licFile ?? undefined
-          );
-        }
-
-        await upsertDocRow(
-          "Carnet de sanidad",
-          { Emision: dateToISO(carnetEmision) },
-          carnetFile ?? undefined
-        );
-        await upsertDocRow(
-          "Antecedentes penales",
-          { Emision: dateToISO(penalesEmision) },
-          penalesFile ?? undefined
-        );
-        await upsertDocRow(
-          "Antecedentes policiales",
-          { Emision: dateToISO(policialesEmision) },
-          policialesFile ?? undefined
-        );
-
-        setMensaje("Ingresado en Personas y Documentación.");
-      }
-
-      if (modo === "Modificar") {
-        const persona = await findPersonaByDocumento(form.Documento);
-        if (!persona) throw new Error("No existe persona con ese Documento.");
-        await actualizarEnPersonas(persona.Id);
-
-        for (let i = 0; i < docRows.length; i++) {
-          const r = docRows[i];
-          const fields =
-            r.tipo === "cad"
-              ? { Caducidad: dateToISO(r.fecha) }
-              : { Emision: dateToISO(r.fecha) };
-          try {
-            await upsertDocRow(r.label, fields, r.file || undefined);
-          } catch (e) {
-            console.warn("upsert", r.label, e);
-          }
-        }
-
-        await loadDocumentacionByTitle(form.Documento);
-        setMensaje(
-          "Registro modificado. Documentación actualizada sin borrar adjuntos."
-        );
-      }
-
-      if (modo === "Dar de baja") {
-        const persona = await findPersonaByDocumento(form.Documento);
-        if (persona) await eliminarEnPersonas(persona.Id);
-        await deleteAllDocsByTitle(form.Documento);
-        setMensaje(
-          "Registro dado de baja en Personas y toda la Documentación."
-        );
-      }
-
-      setDniFile(null);
-    } catch (e: any) {
-      setError(e.message ?? "Error al guardar.");
-    } finally {
-      setGuardando(false);
-    }
   };
 
   function toDate(iso?: string | null): Date | null {
@@ -913,16 +1021,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     );
 
     const defs = [
-      {
-        key: "DNI",
-        tipo: "cad" as const,
-        fechaRaw: map.get("DNI")?.Caducidad ?? null,
-      },
-      {
-        key: "Licencia",
-        tipo: "cad" as const,
-        fechaRaw: map.get("Licencia")?.Caducidad ?? null,
-      },
+      { key: "DNI", tipo: "cad" as const, fechaRaw: map.get("DNI")?.Caducidad ?? null },
+      { key: "Licencia", tipo: "cad" as const, fechaRaw: map.get("Licencia")?.Caducidad ?? null },
       {
         key: "Carnet de sanidad",
         tipo: "emi" as const,
@@ -955,7 +1055,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
             name: a.FileName,
             href: toAbs(siteUrl, a.ServerRelativeUrl),
           }));
-        } catch {}
+        } catch {
+          // ignoramos
+        }
       }
       withAtts.push({
         key: d.key,
@@ -975,72 +1077,21 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     setPolicialesFile(null);
   }
 
-  async function refreshDocRow(label: string, docTitle: string) {
-    const it = await getDocItemByLabel(docTitle, label);
-    let attachments: Attach[] = [];
-    if (it?.Id) {
-      const atts = await sp.web.lists
-        .getByTitle(LST_DOCS)
-        .items.getById(it.Id)
-        .attachmentFiles();
-      attachments = (atts || []).map((a: any) => ({
-        name: a.FileName,
-        href: toAbs(siteUrl, a.ServerRelativeUrl),
-      }));
-    }
-    setDocRows((prev) =>
-      prev.map((r) =>
-        r.label === label
-          ? { ...r, attachments, editing: false, file: null, justUpdated: true }
-          : r
-      )
-    );
-    setTimeout(
-      () =>
-        setDocRows((prev) =>
-          prev.map((r) =>
-            r.label === label ? { ...r, justUpdated: false } : r
-          )
-        ),
-      3000
-    );
-  }
+  async function loadFromGridItem(it: any) {
+    touch();
 
-  async function uploadForRowByLabel(label: string) {
-    if (!form.Documento?.trim()) {
-      setError("Documento (Title) es obligatorio.");
-      return;
-    }
-    let cur: DocRow | undefined = undefined;
-    for (let i = 0; i < docRows.length; i++) {
-      if (docRows[i].label === label) {
-        cur = docRows[i];
-        break;
+    // Si Empresa está editable, traemos el Proveedor del registro seleccionado
+    if (!bloquearEmpresa) {
+      const pid = it.ProveedorId ? Number(it.ProveedorId) : null;
+      setProveedorId(pid);
+      if (pid) {
+        const t = proveedoresByIdRef.current.get(pid) || "";
+        setProveedorTitleOculto(t);
+      } else {
+        setProveedorTitleOculto("");
       }
     }
-    if (!cur) {
-      setError("No se encontró la fila de documentación.");
-      return;
-    }
-    if (!cur.file) {
-      setError("Seleccioná un archivo para subir.");
-      return;
-    }
 
-    const fields =
-      cur.tipo === "cad"
-        ? { Caducidad: dateToISO(cur.fecha) }
-        : { Emision: dateToISO(cur.fecha) };
-
-    try {
-      await upsertDocRow(cur.label, fields, cur.file);
-      await refreshDocRow(cur.label, form.Documento);
-    } catch (e) {
-      console.warn("uploadForRow error:", e);
-    }
-  }
-
-  async function loadFromGridItem(it: any) {
     setForm({
       Documento: it.Title ?? "",
       Nombre: it.Nombre ?? "",
@@ -1051,8 +1102,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       Especificar: it.otro ?? "",
       Licencia: it.Licencia ?? "",
       Categoria: it.Categoria ?? undefined,
-      CorreosNotificacion: it.correosnotificacion ?? "",
+      CorreosNotificacion: stripHtml(it.correosnotificacion),
     });
+
     if (it.Title) {
       try {
         await loadDocumentacionByTitle(it.Title);
@@ -1067,19 +1119,238 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   const modoOptions: IChoiceGroupOption[] = [
     { key: "Ingresar", text: "Ingresar", iconProps: { iconName: "Add" } },
     { key: "Modificar", text: "Modificar", iconProps: { iconName: "Edit" } },
-    {
-      key: "Dar de baja",
-      text: "Dar de baja",
-      iconProps: { iconName: "Delete" },
-    },
+    { key: "Dar de baja", text: "Dar de baja", iconProps: { iconName: "Delete" } },
   ];
+
+  // ======= validación de docs obligatorios para Ingresar =======
+  const docsObligIngresar =
+    dniCaducidad !== null &&
+    carnetEmision !== null &&
+    carnetFile !== null &&
+    penalesEmision !== null &&
+    penalesFile !== null &&
+    policialesEmision !== null &&
+    policialesFile !== null &&
+    (!showLicenciaCat || licCaducidad !== null);
+
+  const puedeGuardar =
+    !guardando && !errorDocs && !error && (modo !== "Ingresar" || docsObligIngresar);
+
+  // ✅ MODIFICADO: mensajes de error “de negocio” sin usar startsWith/includes (compat TS lib vieja)
+  const getFriendlyError = (e: any): string => {
+    const raw =
+      e?.data?.error?.message?.value ||
+      e?.data?.error?.message ||
+      e?.odata?.error?.message?.value ||
+      e?.message ||
+      e?.statusText ||
+      String(e);
+
+    const rawStr = String(raw || "").trim();
+
+    const tryExtractFromEmbeddedJson = (s: string): string | null => {
+      const arrowIdx = s.indexOf("=>");
+      const candidate = (arrowIdx >= 0 ? s.slice(arrowIdx + 2) : s).trim();
+
+      if (candidate && candidate.charAt(0) === "{") {
+        try {
+          const obj = JSON.parse(candidate);
+          const val =
+            (obj &&
+              obj["odata.error"] &&
+              obj["odata.error"].message &&
+              obj["odata.error"].message.value) ||
+            (obj &&
+              obj.odata &&
+              obj.odata.error &&
+              obj.odata.error.message &&
+              obj.odata.error.message.value) ||
+            (obj && obj.error && obj.error.message && obj.error.message.value) ||
+            (obj && obj.error && obj.error.message);
+          if (val) return String(val);
+        } catch {
+          // ignore
+        }
+      }
+
+      const m = s.match(
+        /"message"\s*:\s*\{\s*"lang"\s*:\s*"[^"]*"\s*,\s*"value"\s*:\s*"((?:\\.|[^"\\])*)"\s*\}/i
+      );
+      if (m && m[1]) {
+        try {
+          return JSON.parse(`"${m[1]}"`);
+        } catch {
+          return m[1];
+        }
+      }
+      return null;
+    };
+
+    const stripTechPrefix = (s: string) =>
+      s
+        .replace(/^Error:\s*/i, "")
+        .replace(/^Error making HttpClient request.*?=>\s*/i, "")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const extracted = tryExtractFromEmbeddedJson(rawStr);
+    const msg = stripTechPrefix(extracted ?? rawStr);
+
+    const lower = msg.toLowerCase();
+
+    if (
+      lower.indexOf("spduplicatevaluesfoundexception") !== -1 ||
+      lower.indexOf("valores duplicados") !== -1 ||
+      lower.indexOf("duplicate") !== -1
+    ) {
+      const doc = (form.Documento || "").trim();
+      return doc
+        ? `Ya existe un registro con el documento ${doc}. No se puede guardar duplicado.`
+        : "Ya existe un registro con ese documento. No se puede guardar duplicado.";
+    }
+
+    const idxElElemento = lower.indexOf("el elemento");
+    const msg2 = idxElElemento >= 0 ? msg.slice(idxElElemento).trim() : msg;
+
+    if (!msg2 || msg2.toLowerCase() === "error") {
+      return "No se pudo guardar. Revisá los datos e intentá nuevamente.";
+    }
+
+    return `No se pudo guardar: ${msg2}`;
+  };
+
+  const guardarInterno = async () => {
+    setGuardando(true);
+    try {
+      if (modo === "Ingresar") {
+        await crearEnPersonas();
+
+        await upsertDocRow("DNI", { Caducidad: dateToISO(dniCaducidad) }, dniFile ?? undefined);
+
+        if (showLicenciaCat) {
+          await upsertDocRow(
+            "Licencia",
+            { Caducidad: dateToISO(licCaducidad) },
+            licFile ?? undefined
+          );
+        }
+
+        await upsertDocRow(
+          "Carnet de sanidad",
+          { Emision: dateToISO(carnetEmision) },
+          carnetFile ?? undefined
+        );
+        await upsertDocRow(
+          "Antecedentes penales",
+          { Emision: dateToISO(penalesEmision) },
+          penalesFile ?? undefined
+        );
+        await upsertDocRow(
+          "Antecedentes policiales",
+          { Emision: dateToISO(policialesEmision) },
+          policialesFile ?? undefined
+        );
+
+        limpiar({ keepMessages: true });
+        setMensaje("Ingresado en Personas y Documentación.");
+      }
+
+      if (modo === "Modificar") {
+        const persona = await findPersonaByDocumento(form.Documento);
+        if (!persona) throw new Error("No existe persona con ese Documento.");
+        await actualizarEnPersonas(persona.Id);
+
+        for (let i = 0; i < docRows.length; i++) {
+          const r = docRows[i];
+          const fields =
+            r.tipo === "cad" ? { Caducidad: dateToISO(r.fecha) } : { Emision: dateToISO(r.fecha) };
+          try {
+            await upsertDocRow(r.label, fields, r.file || undefined);
+          } catch (e) {
+            console.warn("upsert", r.label, e);
+          }
+        }
+
+        await loadDocumentacionByTitle(form.Documento);
+        setMensaje("Registro modificado. Documentación actualizada sin borrar adjuntos.");
+      }
+
+      if (modo === "Dar de baja") {
+        const persona = await findPersonaByDocumento(form.Documento);
+        if (!persona) throw new Error("No existe persona con ese Documento.");
+
+        const itemPersona = sp.web.lists.getByTitle(LST_PERSONAS).items.getById(persona.Id);
+
+        if (borrar) {
+          await itemPersona.update({ motivobaja: motivoBaja });
+          await eliminarEnPersonas(persona.Id);
+          await deleteAllDocsByTitle(form.Documento);
+          setMensaje("Registro eliminado de Personas y toda la Documentación.");
+        } else {
+          await itemPersona.update({ activo: false, motivobaja: motivoBaja });
+          setMensaje("Registro marcado como inactivo.");
+        }
+      }
+
+      setDniFile(null);
+      setMotivoBaja("");
+      setShowConfirmBaja(false);
+    } catch (e: any) {
+      setError(getFriendlyError(e));
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  // ======= onGuardar =======
+  const onGuardar = async () => {
+    setMensaje(null);
+    setError(null);
+
+    // ✅ Si Empresa está editable, obligamos a seleccionar una
+    if (!bloquearEmpresa && !proveedorId) {
+      setError("Empresa es obligatoria.");
+      return;
+    }
+
+    if (!form.Documento?.trim()) {
+      setError("Documento es obligatorio.");
+      return;
+    }
+    if (modo !== "Dar de baja" && !form.Nombre?.trim()) {
+      setError("Nombre es obligatorio.");
+      return;
+    }
+    if (errorDocs) {
+      setError(errorDocs);
+      return;
+    }
+
+    if (modo === "Dar de baja" && !showConfirmBaja) {
+      setShowConfirmBaja(true);
+      return;
+    }
+
+    await guardarInterno();
+  };
+
+  const onConfirmarBaja = async () => {
+    if (!motivoBaja.trim()) return;
+    await guardarInterno();
+  };
 
   return (
     <ThemeProvider theme={theme}>
       <Stack
+        key={formKey}
         tokens={stackTokens}
         styles={{ root: { maxWidth: 1024, margin: "0 auto", padding: 12 } }}
+        // ✅ FIX: ayuda a Fluent a manejar foco/scroll dentro de modales con contenido scrolleable
+        data-is-scrollable="true"
       >
+        {/* ✅ Ancla para volver arriba al limpiar */}
+        <div ref={topRef} />
+
         {/* Barra de modo */}
         <Stack
           horizontal
@@ -1099,9 +1370,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         >
           <Icon
             iconName="Contact"
-            styles={{
-              root: { fontSize: 22, color: theme.palette.themePrimary },
-            }}
+            styles={{ root: { fontSize: 22, color: theme.palette.themePrimary } }}
           />
           <Label
             styles={{
@@ -1114,20 +1383,23 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
           >
             Registro de Personal
           </Label>
-          {/* acá centramos los tres modos */}
+
           <StackItem grow>
             <Stack horizontal horizontalAlign="center">
               <ChoiceGroup
                 selectedKey={modo}
                 options={modoOptions}
                 onChange={(_, opt) => {
+                  touch();
                   const next = (opt?.key as Modo) ?? "Ingresar";
                   setModo(next);
                   if (next === "Ingresar") {
                     limpiar();
                     try {
                       selectionRef.current?.setAllSelected(false);
-                    } catch {}
+                    } catch {
+                      // nada
+                    }
                   }
                 }}
               />
@@ -1150,7 +1422,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
           >
             <Label styles={{ root: { fontWeight: 600 } }}>
               Registros del proveedor:{" "}
-              {proveedorTitleOculto || "(sin proveedor)"}
+              {filtrarPorProveedor
+                ? proveedorTitleOculto || "(sin proveedor seleccionado)"
+                : "Todos"}
             </Label>
 
             {cargandoGrid ? (
@@ -1160,19 +1434,20 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 <SearchBox
                   placeholder="Filtrar por cualquier campo…"
                   value={queryGrid}
-                  onChange={(_, v) => setQueryGrid(v || "")}
-                  onClear={() => setQueryGrid("")}
+                  onChange={(_, v) => {
+                    touch();
+                    setQueryGrid(v || "");
+                  }}
+                  onClear={() => {
+                    touch();
+                    setQueryGrid("");
+                  }}
                   styles={{ root: { maxWidth: 340, marginBottom: 8 } }}
                 />
 
                 {itemsProveedorFiltrados.length === 0 ? (
-                  <MessageBar
-                    messageBarType={MessageBarType.info}
-                    isMultiline={false}
-                  >
-                    {queryGrid
-                      ? "Sin resultados para la búsqueda."
-                      : "No hay registros."}
+                  <MessageBar messageBarType={MessageBarType.info} isMultiline={false}>
+                    {queryGrid ? "Sin resultados para la búsqueda." : "No hay registros."}
                   </MessageBar>
                 ) : (
                   <div style={{ width: "100%", overflowX: "auto" }}>
@@ -1198,10 +1473,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
 
         {/* Mensajes */}
         {mensaje && (
-          <MessageBar
-            messageBarType={MessageBarType.success}
-            isMultiline={false}
-          >
+          <MessageBar messageBarType={MessageBarType.success} isMultiline={false}>
             {mensaje}
           </MessageBar>
         )}
@@ -1215,8 +1487,14 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
             {errorDocs}
           </MessageBar>
         )}
+        {modo === "Ingresar" && !docsObligIngresar && !errorDocs && (
+          <MessageBar messageBarType={MessageBarType.warning} isMultiline={false}>
+            DNI requiere fecha. Carnet de sanidad y los certificados (penales y policiales)
+            requieren fecha y archivo. Si corresponde, la Licencia requiere fecha.
+          </MessageBar>
+        )}
 
-        {/* Sección 2 - Personal */}
+        {/* Sección 2 - Datos personales */}
         <Stack
           tokens={{ childrenGap: 8 }}
           styles={{
@@ -1239,11 +1517,37 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
           >
             Datos personales
           </Label>
-          <input
-            type="hidden"
-            name="ProveedorTitle"
-            value={proveedorTitleOculto}
-          />
+
+          {/* mantiene compat con lo que ya venías haciendo */}
+          <input type="hidden" name="ProveedorTitle" value={proveedorTitleOculto} />
+
+          <Stack horizontal wrap tokens={stackTokens}>
+            <StackItem grow styles={{ root: { minWidth: 200 } }}>
+              {bloquearEmpresa ? (
+                <TextField
+                  label="Empresa"
+                  value={proveedorTitleOculto || ""}
+                  disabled
+                  styles={roundedField}
+                />
+              ) : (
+                <Dropdown
+                  label="Empresa"
+                  placeholder="Seleccionar empresa…"
+                  options={proveedoresOptions}
+                  selectedKey={proveedorId ?? undefined}
+                  onChange={(_, opt) => {
+                    touch();
+                    const id = opt ? Number(opt.key) : null;
+                    setProveedorId(id);
+                    setProveedorTitleOculto(opt?.text ? String(opt.text) : "");
+                  }}
+                  styles={roundedDropdown}
+                  disabled={isDarDeBaja}
+                />
+              )}
+            </StackItem>
+          </Stack>
 
           <Stack horizontal wrap tokens={stackTokens}>
             <StackItem grow styles={{ root: { minWidth: 200 } }}>
@@ -1253,6 +1557,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 onChange={(_, v) => onChange("Nombre", v || "")}
                 required={modo !== "Dar de baja"}
                 styles={roundedField}
+                disabled={isDarDeBaja}
               />
             </StackItem>
           </Stack>
@@ -1264,6 +1569,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 value={form.ApellidoPaterno}
                 onChange={(_, v) => onChange("ApellidoPaterno", v || "")}
                 styles={roundedField}
+                disabled={isDarDeBaja}
               />
             </StackItem>
           </Stack>
@@ -1275,6 +1581,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 value={form.ApellidoMaterno}
                 onChange={(_, v) => onChange("ApellidoMaterno", v || "")}
                 styles={roundedField}
+                disabled={isDarDeBaja}
               />
             </StackItem>
           </Stack>
@@ -1285,10 +1592,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 label="Tipo de documento"
                 options={opcionesTipoDocumento}
                 selectedKey={form.TipoDocumento}
-                onChange={(_, opt) =>
-                  onChange("TipoDocumento", String(opt?.key))
-                }
+                onChange={(_, opt) => onChange("TipoDocumento", String(opt?.key))}
                 styles={roundedDropdown}
+                disabled={isDarDeBaja}
               />
             </StackItem>
             <StackItem grow styles={{ root: { minWidth: 200 } }}>
@@ -1298,14 +1604,41 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 onChange={(_, v) => onChange("Documento", v || "")}
                 required
                 styles={roundedField}
+                disabled={isDarDeBaja}
               />
             </StackItem>
             <StackItem grow styles={{ root: { minWidth: 200 } }}>
               <span />
             </StackItem>
           </Stack>
+        </Stack>
 
-          {/* Puesto + campos condicionales */}
+        {/* Datos laborales */}
+        <Stack
+          tokens={{ childrenGap: 8 }}
+          styles={{
+            root: {
+              background: theme.palette.white,
+              borderRadius: 12,
+              padding: 16,
+              boxShadow: theme.effects.elevation8 as any,
+            },
+          }}
+        >
+          <Label
+            styles={{
+              root: {
+                fontWeight: 600,
+                fontSize: 16,
+                color: theme.palette.themePrimary,
+              },
+            }}
+          >
+            Datos laborales
+          </Label>
+
+          <input type="hidden" name="ProveedorTitle" value={proveedorTitleOculto} />
+
           <Stack horizontal wrap tokens={stackTokens}>
             <StackItem grow styles={{ root: { minWidth: 200 } }}>
               <Dropdown
@@ -1313,21 +1646,18 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 options={opcionesPuesto}
                 selectedKey={form.Puesto}
                 onChange={(_, opt) => {
+                  touch();
                   const nuevo = String(opt?.key || "");
                   setForm((prev) => ({
                     ...prev,
                     Puesto: nuevo,
-                    Especificar:
-                      nuevo.toLowerCase() === "otro" ? prev.Especificar : "",
-                    Licencia:
-                      nuevo.toLowerCase() === "conductor" ? prev.Licencia : "",
-                    Categoria:
-                      nuevo.toLowerCase() === "conductor"
-                        ? prev.Categoria
-                        : undefined,
+                    Especificar: nuevo.toLowerCase() === "otro" ? prev.Especificar : "",
+                    Licencia: nuevo.toLowerCase() === "conductor" ? prev.Licencia : "",
+                    Categoria: nuevo.toLowerCase() === "conductor" ? prev.Categoria : undefined,
                   }));
                 }}
                 styles={roundedDropdown}
+                disabled={isDarDeBaja || laboralBloqueado}
               />
             </StackItem>
 
@@ -1338,6 +1668,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                   value={form.Especificar}
                   onChange={(_, v) => onChange("Especificar", v || "")}
                   styles={roundedField}
+                  disabled={isDarDeBaja || laboralBloqueado}
                 />
               </StackItem>
             )}
@@ -1351,6 +1682,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                   value={form.Licencia}
                   onChange={(_, v) => onChange("Licencia", v || "")}
                   styles={roundedField}
+                  disabled={isDarDeBaja || laboralBloqueado}
                 />
               </StackItem>
               <StackItem grow styles={{ root: { minWidth: 200 } }}>
@@ -1360,13 +1692,117 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                   selectedKey={form.Categoria}
                   onChange={(_, opt) => onChange("Categoria", String(opt?.key))}
                   styles={roundedDropdown}
+                  disabled={isDarDeBaja || laboralBloqueado}
                 />
               </StackItem>
             </Stack>
           )}
         </Stack>
 
-        {/* Sección 2.5 - Notificaciones */}
+        {/* Sección 3 - Documentación */}
+        <Stack tokens={{ childrenGap: 12 }}>
+          <Label
+            styles={{
+              root: {
+                fontWeight: 600,
+                fontSize: 16,
+                color: theme.palette.themePrimary,
+              },
+            }}
+          >
+            Documentación
+          </Label>
+
+          {modo === "Ingresar" && (
+            <Stack horizontal wrap tokens={{ childrenGap: 12 }}>
+              <DocCard
+                title="DNI"
+                dateLabel="Fecha de caducidad"
+                dateValue={dniCaducidad}
+                onDateChange={setDateAndTouch(setDniCaducidad)}
+                file={dniFile}
+                onFileChange={setFileAndTouch(setDniFile)}
+              />
+
+              {showLicenciaCat && (
+                <DocCard
+                  title="Licencia"
+                  dateLabel="Fecha de caducidad"
+                  dateValue={licCaducidad}
+                  onDateChange={setDateAndTouch(setLicCaducidad)}
+                  file={licFile}
+                  onFileChange={setFileAndTouch(setLicFile)}
+                />
+              )}
+
+              <DocCard
+                title="Carnet de sanidad"
+                dateLabel="Fecha de emisión"
+                dateValue={carnetEmision}
+                onDateChange={setDateAndTouch(setCarnetEmision)}
+                file={carnetFile}
+                onFileChange={setFileAndTouch(setCarnetFile)}
+              />
+              <DocCard
+                title="Antecedentes penales"
+                dateLabel="Fecha de emisión"
+                dateValue={penalesEmision}
+                onDateChange={setDateAndTouch(setPenalesEmision)}
+                file={penalesFile}
+                onFileChange={setFileAndTouch(setPenalesFile)}
+              />
+              <DocCard
+                title="Antecedentes policiales"
+                dateLabel="Fecha de emisión"
+                dateValue={policialesEmision}
+                onDateChange={setDateAndTouch(setPolicialesEmision)}
+                file={policialesFile}
+                onFileChange={setFileAndTouch(setPolicialesFile)}
+              />
+            </Stack>
+          )}
+
+          {modo === "Modificar" && (
+            <Stack tokens={{ childrenGap: 8 }}>
+              {!form.Documento?.trim() ? (
+                <MessageBar messageBarType={MessageBarType.info} isMultiline={false}>
+                  Seleccioná un registro en la grilla superior para ver su documentación.
+                </MessageBar>
+              ) : (
+                <Stack horizontal wrap tokens={{ childrenGap: 12 }}>
+                  {docRows.map((r) => (
+                    <DocCard
+                      key={r.key}
+                      title={r.label}
+                      dateLabel={r.tipo === "cad" ? "Fecha de caducidad" : "Fecha de emisión"}
+                      dateValue={r.fecha}
+                      onDateChange={(d) => {
+                        touch();
+                        setDocRows((prev) =>
+                          prev.map((row) =>
+                            row.label === r.label ? { ...row, fecha: d } : row
+                          )
+                        );
+                      }}
+                      file={r.file || null}
+                      onFileChange={(file) => {
+                        touch();
+                        setDocRows((prev) =>
+                          prev.map((row) =>
+                            row.label === r.label ? { ...row, file } : row
+                          )
+                        );
+                      }}
+                      attachments={r.attachments}
+                    />
+                  ))}
+                </Stack>
+              )}
+            </Stack>
+          )}
+        </Stack>
+
+        {/* Sección 4 - Notificaciones */}
         <Stack
           tokens={{ childrenGap: 8 }}
           styles={{
@@ -1399,263 +1835,63 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 multiline
                 autoAdjustHeight
                 styles={roundedField}
+                disabled={isDarDeBaja}
               />
             </StackItem>
           </Stack>
         </Stack>
 
-        {/* Sección 3 - Documentación */}
-        <Stack tokens={{ childrenGap: 12 }}>
-          <Label
-            styles={{
-              root: {
-                fontWeight: 600,
-                fontSize: 16,
-                color: theme.palette.themePrimary,
-              },
+        {/* Modal de confirmación para Dar de baja */}
+        <Dialog
+          hidden={!showConfirmBaja}
+          onDismiss={() => {
+            if (!guardando) {
+              setShowConfirmBaja(false);
+              setMotivoBaja("");
+            }
+          }}
+          dialogContentProps={{
+            type: DialogType.normal,
+            title: "Confirmar baja",
+            subText: borrar
+              ? "Se eliminará el registro y toda la documentación."
+              : "El registro se marcará como inactivo.",
+          }}
+        >
+          <TextField
+            label="Motivo"
+            multiline
+            required
+            value={motivoBaja}
+            onChange={(_, v) => {
+              touch();
+              setMotivoBaja(v || "");
             }}
-          >
-            Documentación
-          </Label>
+          />
 
-          {modo === "Ingresar" && (
-            <>
-              <DocCard
-                title="DNI"
-                dateLabel="Caducidad"
-                dateValue={dniCaducidad}
-                onDateChange={setDniCaducidad}
-                file={dniFile}
-                onFileChange={setDniFile}
-              />
+          <DialogFooter>
+            <PrimaryButton
+              text="Confirmar"
+              onClick={onConfirmarBaja}
+              disabled={!motivoBaja.trim() || guardando}
+            />
+            <DefaultButton
+              text="Cancelar"
+              onClick={() => {
+                if (!guardando) {
+                  setShowConfirmBaja(false);
+                  setMotivoBaja("");
+                }
+              }}
+              disabled={guardando}
+            />
+          </DialogFooter>
+        </Dialog>
 
-              {showLicenciaCat && (
-                <DocCard
-                  title="Licencia"
-                  dateLabel="Caducidad"
-                  dateValue={licCaducidad}
-                  onDateChange={setLicCaducidad}
-                  file={licFile}
-                  onFileChange={setLicFile}
-                />
-              )}
-
-              <DocCard
-                title="Carnet de sanidad"
-                dateLabel="Fecha de emisión"
-                dateValue={carnetEmision}
-                onDateChange={setCarnetEmision}
-                file={carnetFile}
-                onFileChange={setCarnetFile}
-              />
-              <DocCard
-                title="Antecedentes penales"
-                dateLabel="Fecha de emisión"
-                dateValue={penalesEmision}
-                onDateChange={setPenalesEmision}
-                file={penalesFile}
-                onFileChange={setPenalesFile}
-              />
-              <DocCard
-                title="Antecedentes policiales"
-                dateLabel="Fecha de emisión"
-                dateValue={policialesEmision}
-                onDateChange={setPolicialesEmision}
-                file={policialesFile}
-                onFileChange={setPolicialesFile}
-              />
-            </>
-          )}
-
-          {modo === "Modificar" && (
-            <Stack tokens={{ childrenGap: 8 }}>
-              {!form.Documento?.trim() && (
-                <MessageBar
-                  messageBarType={MessageBarType.info}
-                  isMultiline={false}
-                >
-                  Seleccioná un registro en la grilla superior para ver su
-                  documentación.
-                </MessageBar>
-              )}
-              <DetailsList
-                items={docRows}
-                selectionMode={SelectionMode.none}
-                columns={[
-                  {
-                    key: "colLabel",
-                    name: "Documento",
-                    minWidth: 180,
-                    onRender: (r: DocRow) => (
-                      <span
-                        style={{ color: r.justUpdated ? "green" : undefined }}
-                      >
-                        {r.label}
-                      </span>
-                    ),
-                  },
-                  {
-                    key: "colFecha",
-                    name: "Fecha",
-                    minWidth: 160,
-                    onRender: (r: DocRow) => (
-                      <span
-                        style={{ color: r.justUpdated ? "green" : undefined }}
-                      >
-                        {r.fecha ? r.fecha.toLocaleDateString() : "-"}{" "}
-                        <i>({r.tipo === "cad" ? "Caducidad" : "Emisión"})</i>
-                      </span>
-                    ),
-                  },
-                  {
-                    key: "colAdj",
-                    name: "Adjuntos",
-                    minWidth: 240,
-                    onRender: (r: DocRow) =>
-                      r.attachments?.length ? (
-                        <Stack tokens={{ childrenGap: 4 }}>
-                          {r.attachments.map((a) => (
-                            <a
-                              key={a.href}
-                              href={a.href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              {a.name}
-                            </a>
-                          ))}
-                        </Stack>
-                      ) : (
-                        <span style={{ opacity: 0.6 }}>Sin adjuntos</span>
-                      ),
-                  },
-                  {
-                    key: "colAccion",
-                    name: "Acción",
-                    minWidth: 340,
-                    onRender: (r: DocRow) =>
-                      r.editing ? (
-                        <Stack
-                          horizontal
-                          tokens={{ childrenGap: 8 }}
-                          verticalAlign="center"
-                        >
-                          <input
-                            type="file"
-                            onChange={(e) => {
-                              const file =
-                                e.target.files && e.target.files[0]
-                                  ? e.target.files[0]
-                                  : null;
-                              setDocRows((prev) => {
-                                const next = prev.slice(0);
-                                for (let i = 0; i < next.length; i++) {
-                                  if (next[i].label === r.label) {
-                                    next[i] = { ...next[i], file };
-                                    break;
-                                  }
-                                }
-                                return next;
-                              });
-                            }}
-                          />
-                          <PrimaryButton
-                            text="Subir"
-                            disabled={!r.file}
-                            onClick={() =>
-                              uploadForRowByLabel(r.label).catch((err) => {
-                                console.warn(err);
-                                setError("No se pudo subir el adjunto.");
-                              })
-                            }
-                          />
-                          <DefaultButton
-                            text="Confirmar"
-                            onClick={() =>
-                              setDocRows((prev) => {
-                                const next = prev.slice(0);
-                                for (let i = 0; i < next.length; i++) {
-                                  if (next[i].label === r.label) {
-                                    next[i] = {
-                                      ...next[i],
-                                      editing: false,
-                                      justUpdated: true,
-                                    };
-                                    break;
-                                  }
-                                }
-                                setTimeout(() => {
-                                  setDocRows((p2) => {
-                                    const n2 = p2.slice(0);
-                                    for (let j = 0; j < n2.length; j++)
-                                      if (n2[j].label === r.label)
-                                        n2[j] = {
-                                          ...n2[j],
-                                          justUpdated: false,
-                                        };
-                                    return n2;
-                                  });
-                                }, 3000);
-                                return next;
-                              })
-                            }
-                          />
-                          <DefaultButton
-                            text="Cancelar"
-                            onClick={() =>
-                              setDocRows((prev) => {
-                                const next = prev.slice(0);
-                                for (let i = 0; i < next.length; i++) {
-                                  if (next[i].label === r.label) {
-                                    next[i] = {
-                                      ...next[i],
-                                      editing: false,
-                                      file: null,
-                                    };
-                                    break;
-                                  }
-                                }
-                                return next;
-                              })
-                            }
-                          />
-                        </Stack>
-                      ) : (
-                        <DefaultButton
-                          text="Editar"
-                          onClick={() =>
-                            setDocRows((prev) => {
-                              const next = prev.slice(0);
-                              for (let i = 0; i < next.length; i++) {
-                                if (next[i].label === r.label) {
-                                  next[i] = { ...next[i], editing: true };
-                                  break;
-                                }
-                              }
-                              return next;
-                            })
-                          }
-                        />
-                      ),
-                  },
-                ]}
-              />
-            </Stack>
-          )}
-        </Stack>
-
-        {/* Sección 4 - Acciones */}
+        {/* Sección 5 - Acciones */}
         <Stack horizontal wrap tokens={stackTokens} verticalAlign="center">
-          <PrimaryButton
-            text="Guardar"
-            onClick={onGuardar}
-            disabled={guardando || !!errorDocs || !!error}
-          />
-          <DefaultButton
-            text="Cancelar"
-            onClick={onCancelar}
-            disabled={guardando}
-          />
+          <PrimaryButton text="Guardar" onClick={onGuardar} disabled={!puedeGuardar} />
+          <DefaultButton text="Cancelar" onClick={onCancelar} disabled={guardando} />
           {guardando && (
             <StackItem grow>
               <ProgressIndicator label="Guardando..." />

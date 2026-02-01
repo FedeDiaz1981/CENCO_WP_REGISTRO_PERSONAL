@@ -15,7 +15,9 @@ import '@pnp/sp/lists';
 import '@pnp/sp/items';
 
 export interface IWP_CENCO_Registro_PersonalWebPartProps {
-  filtrarPorProveedor: boolean;  // <-- Toggle para filtrar grilla por proveedor
+  filtrarPorProveedor: boolean;  // Toggle para filtrar grilla por proveedor
+  borrar: boolean;               // Toggle para Dar de baja
+  bloquearEmpresa: boolean;      // ✅ NUEVO: bloquear empresa por usuario (auto-detect)
 }
 
 export default class WP_CENCO_Registro_PersonalWebPart
@@ -33,7 +35,9 @@ export default class WP_CENCO_Registro_PersonalWebPart
       {
         sp: this._sp,
         siteUrl: this.context.pageContext.web.absoluteUrl,
-        filtrarPorProveedor: this.properties.filtrarPorProveedor // <-- Se pasa al componente
+        filtrarPorProveedor: this.properties.filtrarPorProveedor,
+        borrar: this.properties.borrar,
+        bloquearEmpresa: this.properties.bloquearEmpresa // ✅ NUEVO
       }
     );
 
@@ -61,6 +65,16 @@ export default class WP_CENCO_Registro_PersonalWebPart
                   label: 'Filtrar registros por proveedor del usuario',
                   onText: 'Sí',
                   offText: 'No'
+                }),
+                PropertyPaneToggle('borrar', {
+                  label: 'Borrar registro al dar de baja',
+                  onText: 'Sí (eliminar registro)',
+                  offText: 'No (marcar inactivo)'
+                }),
+                PropertyPaneToggle('bloquearEmpresa', {
+                  label: 'Bloquear empresa (según proveedor del usuario)',
+                  onText: 'Sí (bloqueado)',
+                  offText: 'No (editable)'
                 })
               ]
             }

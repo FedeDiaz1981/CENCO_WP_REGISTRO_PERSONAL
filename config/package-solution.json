@@ -3,7 +3,7 @@
   "solution": {
     "name": "cenco-wp-registro-personal-client-side-solution",
     "id": "6ac4b6b6-dfdd-48e5-ac6c-4ee14aa1393d",
-    "version": "3.0.0.0",
+    "version": "9.0.0.0",
     "includeClientSideAssets": true,
     "skipFeatureDeployment": true,
     "isDomainIsolated": false,

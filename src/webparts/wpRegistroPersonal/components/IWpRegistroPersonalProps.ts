@@ -9,4 +9,6 @@ export interface IWpRegistroPersonalProps {
   sp: SPFI;
   siteUrl: string;
   filtrarPorProveedor: boolean;
+  borrar: boolean;
+  bloquearEmpresa: boolean; // ✅ NUEVO
 }
