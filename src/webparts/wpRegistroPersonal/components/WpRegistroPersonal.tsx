@@ -461,157 +461,6 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   const [showConfirmBaja, setShowConfirmBaja] = React.useState(false);
   const [motivoBaja, setMotivoBaja] = React.useState("");
 
-  // ===== bloqueo de Datos laborales según documento =====
-  const laboralBloqueado = React.useMemo(() => {
-    const tipo = form.TipoDocumento || "";
-    const len = (form.Documento || "").trim().length;
-
-    if (!tipo) return true;
-    if (tipo === "DNI") return len < 8;
-    return len < 9; // Pasaporte o Carnet
-  }, [form.TipoDocumento, form.Documento]);
-
-  // ===== visibilidad dinámica por Puesto =====
-  const puestoNorm = (form.Puesto || "").toLowerCase().trim();
-  const showEspecificar = React.useMemo(
-    () => puestoNorm === "otro",
-    [puestoNorm]
-  );
-  const showLicenciaCat = React.useMemo(
-    () => puestoNorm === "conductor",
-    [puestoNorm]
-  );
-
-  // =======================
-  // Proveedores: cargar opciones SIEMPRE (para el modo editable)
-  // =======================
-  React.useEffect(() => {
-    let cancelado = false;
-
-    const cargarProveedores = async () => {
-      try {
-        const items = await sp.web.lists
-          .getByTitle(LST_PROVEEDORES)
-          .items.select("Id", "Title")
-          .orderBy("Title", true)
-          .top(5000)();
-
-        if (cancelado) return;
-
-        const map = new Map<number, string>();
-        const opts: IDropdownOption[] = (items as any[]).map((it) => {
-          const id = Number(it.Id);
-          const title = String(it.Title || "");
-          map.set(id, title);
-          return { key: id, text: title };
-        });
-
-        proveedoresByIdRef.current = map;
-        setProveedoresOptions(opts);
-
-        // Si está editable y todavía no hay título pero sí hay Id, lo sincronizamos
-        if (!bloquearEmpresa && proveedorId && !proveedorTitleOculto) {
-          const t = map.get(proveedorId) || "";
-          if (t) setProveedorTitleOculto(t);
-        }
-      } catch {
-        if (!cancelado) {
-          proveedoresByIdRef.current = new Map();
-          setProveedoresOptions([]);
-        }
-      }
-    };
-
-    cargarProveedores().catch(() => {});
-    return () => {
-      cancelado = true;
-    };
-  }, [sp, bloquearEmpresa, proveedorId, proveedorTitleOculto]);
-
-  // =======================
-  // Meta lookup Proveedor (para armar payload correcto)
-  // =======================
-  type LookupMeta = {
-    InternalName: string;
-    TypeAsString: string;
-    AllowMultipleValues?: boolean;
-  };
-  const [provFieldMeta, setProvFieldMeta] = React.useState<LookupMeta | null>(
-    null
-  );
-
-  const buildProveedorPayload = () => {
-    if (!proveedorId || !provFieldMeta) return {};
-    const key = `${provFieldMeta.InternalName}Id`;
-    const tas = (provFieldMeta.TypeAsString || "").toLowerCase();
-    const isMulti =
-      provFieldMeta.AllowMultipleValues === true || tas.indexOf("multi") !== -1;
-    return isMulti
-      ? { [key]: { results: [proveedorId] } }
-      : { [key]: proveedorId };
-  };
-
-  // =======================
-  // Si bloquearEmpresa=true => autodetectar proveedor por usuario (comportamiento actual)
-  // Si bloquearEmpresa=false => NO pisar selección (queda editable)
-  // =======================
-  React.useEffect(() => {
-    let cancelado = false;
-
-    const cargarMetaYProveedorUsuario = async () => {
-      try {
-        // Meta campo Proveedor (siempre, porque lo necesitamos para guardar)
-        const f = await sp.web.lists
-          .getByTitle(LST_PERSONAS)
-          .fields.getByInternalNameOrTitle("Proveedor")
-          .select("InternalName", "TypeAsString", "AllowMultipleValues")();
-
-        if (!cancelado)
-          setProvFieldMeta({
-            InternalName: f.InternalName,
-            TypeAsString: f.TypeAsString,
-            AllowMultipleValues: (f as any).AllowMultipleValues,
-          });
-
-        // Autodetect SOLO si está bloqueado
-        if (!bloquearEmpresa) return;
-
-        const me = await sp.web.currentUser();
-        let items = await sp.web.lists
-          .getByTitle(LST_PROVEEDORES)
-          .items.select("Id", "Title", "Usuarios/Id")
-          .expand("Usuarios")
-          .filter(`Usuarios/Id eq ${me.Id}`)
-          .top(1)();
-
-        if (!items?.length) {
-          items = await sp.web.lists
-            .getByTitle(LST_PROVEEDORES)
-            .items.select("Id", "Title", "UsuariosId")
-            .filter(`UsuariosId eq ${me.Id}`)
-            .top(1)();
-        }
-
-        if (!cancelado && items?.[0]) {
-          setProveedorTitleOculto(items[0].Title);
-          setProveedorId(items[0].Id);
-        }
-      } catch {
-        // ignoramos
-      }
-    };
-
-    cargarMetaYProveedorUsuario().catch(() => {});
-    return () => {
-      cancelado = true;
-    };
-  }, [sp, bloquearEmpresa]);
-
-  const onChange = (field: keyof PersonaForm, value?: string) => {
-    touch();
-    setForm((prev) => ({ ...prev, [field]: value ?? "" }));
-  };
-
   // ---- Validación de antigüedad ----
   const errorDocs = React.useMemo(() => {
     const fmt = (d: Date) => d.toLocaleDateString();
@@ -666,6 +515,165 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
 
     return null;
   }, [modo, carnetEmision, penalesEmision, policialesEmision, docRows]);
+
+  // ✅ NUEVO: refs + foco automático a mensajes de error
+  const errorRef = React.useRef<HTMLDivElement | null>(null);
+  const errorDocsRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!error && !errorDocs) return;
+
+    // Priorizamos el error “principal” (setError). Si no hay, vamos al errorDocs.
+    const target = error ? errorRef.current : errorDocsRef.current;
+    if (!target) return;
+
+    requestAnimationFrame(() => {
+      try {
+        target.focus();
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch {
+        // ignore
+      }
+    });
+  }, [error, errorDocs]);
+
+  // ===== bloqueo de Datos laborales según documento =====
+  const laboralBloqueado = React.useMemo(() => {
+    const tipo = form.TipoDocumento || "";
+    const len = (form.Documento || "").trim().length;
+
+    if (!tipo) return true;
+    if (tipo === "DNI") return len < 8;
+    return len < 9; // Pasaporte o Carnet
+  }, [form.TipoDocumento, form.Documento]);
+
+  // ===== visibilidad dinámica por Puesto =====
+  const puestoNorm = (form.Puesto || "").toLowerCase().trim();
+  const showEspecificar = React.useMemo(() => puestoNorm === "otro", [puestoNorm]);
+  const showLicenciaCat = React.useMemo(() => puestoNorm === "conductor", [puestoNorm]);
+
+  // =======================
+  // Proveedores: cargar opciones SIEMPRE (para el modo editable)
+  // =======================
+  React.useEffect(() => {
+    let cancelado = false;
+
+    const cargarProveedores = async () => {
+      try {
+        const items = await sp.web.lists
+          .getByTitle(LST_PROVEEDORES)
+          .items.select("Id", "Title")
+          .orderBy("Title", true)
+          .top(5000)();
+
+        if (cancelado) return;
+
+        const map = new Map<number, string>();
+        const opts: IDropdownOption[] = (items as any[]).map((it) => {
+          const id = Number(it.Id);
+          const title = String(it.Title || "");
+          map.set(id, title);
+          return { key: id, text: title };
+        });
+
+        proveedoresByIdRef.current = map;
+        setProveedoresOptions(opts);
+
+        if (!bloquearEmpresa && proveedorId && !proveedorTitleOculto) {
+          const t = map.get(proveedorId) || "";
+          if (t) setProveedorTitleOculto(t);
+        }
+      } catch {
+        if (!cancelado) {
+          proveedoresByIdRef.current = new Map();
+          setProveedoresOptions([]);
+        }
+      }
+    };
+
+    cargarProveedores().catch(() => {});
+    return () => {
+      cancelado = true;
+    };
+  }, [sp, bloquearEmpresa, proveedorId, proveedorTitleOculto]);
+
+  // =======================
+  // Meta lookup Proveedor (para armar payload correcto)
+  // =======================
+  type LookupMeta = {
+    InternalName: string;
+    TypeAsString: string;
+    AllowMultipleValues?: boolean;
+  };
+  const [provFieldMeta, setProvFieldMeta] = React.useState<LookupMeta | null>(null);
+
+  const buildProveedorPayload = () => {
+    if (!proveedorId || !provFieldMeta) return {};
+    const key = `${provFieldMeta.InternalName}Id`;
+    const tas = (provFieldMeta.TypeAsString || "").toLowerCase();
+    const isMulti =
+      provFieldMeta.AllowMultipleValues === true || tas.indexOf("multi") !== -1;
+    return isMulti ? { [key]: { results: [proveedorId] } } : { [key]: proveedorId };
+  };
+
+  // =======================
+  // Si bloquearEmpresa=true => autodetectar proveedor por usuario
+  // Si bloquearEmpresa=false => NO pisar selección
+  // =======================
+  React.useEffect(() => {
+    let cancelado = false;
+
+    const cargarMetaYProveedorUsuario = async () => {
+      try {
+        const f = await sp.web.lists
+          .getByTitle(LST_PERSONAS)
+          .fields.getByInternalNameOrTitle("Proveedor")
+          .select("InternalName", "TypeAsString", "AllowMultipleValues")();
+
+        if (!cancelado)
+          setProvFieldMeta({
+            InternalName: f.InternalName,
+            TypeAsString: f.TypeAsString,
+            AllowMultipleValues: (f as any).AllowMultipleValues,
+          });
+
+        if (!bloquearEmpresa) return;
+
+        const me = await sp.web.currentUser();
+        let items = await sp.web.lists
+          .getByTitle(LST_PROVEEDORES)
+          .items.select("Id", "Title", "Usuarios/Id")
+          .expand("Usuarios")
+          .filter(`Usuarios/Id eq ${me.Id}`)
+          .top(1)();
+
+        if (!items?.length) {
+          items = await sp.web.lists
+            .getByTitle(LST_PROVEEDORES)
+            .items.select("Id", "Title", "UsuariosId")
+            .filter(`UsuariosId eq ${me.Id}`)
+            .top(1)();
+        }
+
+        if (!cancelado && items?.[0]) {
+          setProveedorTitleOculto(items[0].Title);
+          setProveedorId(items[0].Id);
+        }
+      } catch {
+        // ignoramos
+      }
+    };
+
+    cargarMetaYProveedorUsuario().catch(() => {});
+    return () => {
+      cancelado = true;
+    };
+  }, [sp, bloquearEmpresa]);
+
+  const onChange = (field: keyof PersonaForm, value?: string) => {
+    touch();
+    setForm((prev) => ({ ...prev, [field]: value ?? "" }));
+  };
 
   // --- Filtro local de la grilla de personas ---
   type PersonaItem = {
@@ -777,9 +785,6 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
 
         let filter = "activo eq 1";
 
-        // Si se debe filtrar por proveedor:
-        // - bloquearEmpresa=true => proveedorId viene del usuario
-        // - bloquearEmpresa=false => proveedorId viene del dropdown
         if (filtrarPorProveedor && proveedorId) {
           filter += ` and ProveedorId eq ${proveedorId}`;
         }
@@ -859,17 +864,14 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       setError(null);
     }
 
-    // fuerza remount
     setFormKey((k) => k + 1);
 
-    // limpia selección
     try {
       selectionRef.current?.setAllSelected(false);
     } catch {
       // nada
     }
 
-    // ✅ volver arriba
     requestAnimationFrame(() => scrollToTop());
   };
 
@@ -893,7 +895,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       Licencia: form.Licencia,
       Categoria: form.Categoria,
       correosnotificacion: stripHtml(form.CorreosNotificacion),
-      ...buildProveedorPayload(), // ✅ usa proveedorId actual (detectado o elegido)
+      ...buildProveedorPayload(),
     });
 
   const actualizarEnPersonas = async (id: number) =>
@@ -910,7 +912,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         Licencia: form.Licencia,
         Categoria: form.Categoria,
         correosnotificacion: stripHtml(form.CorreosNotificacion),
-        ...buildProveedorPayload(), // ✅ usa proveedorId actual (detectado o elegido)
+        ...buildProveedorPayload(),
       });
 
   const eliminarEnPersonas = async (id: number) =>
@@ -928,9 +930,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     const found = await sp.web.lists
       .getByTitle(LST_DOCS)
       .items.select("Id")
-      .filter(
-        `Title eq '${esc(form.Documento)}' and Documento eq '${esc(label)}'`
-      )
+      .filter(`Title eq '${esc(form.Documento)}' and Documento eq '${esc(label)}'`)
       .orderBy("Id", false)
       .top(1)();
     const id = Number(found?.[0]?.Id);
@@ -982,7 +982,11 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     await item.attachmentFiles.add(file.name, file);
   };
 
-  const upsertDocRow = async (label: string, fields: DocFields, file?: File | null) => {
+  const upsertDocRow = async (
+    label: string,
+    fields: DocFields,
+    file?: File | null
+  ) => {
     if (!form.Documento?.trim())
       throw new Error("Documento (Title) es obligatorio para Documentación.");
     const existing = await getDocItemByLabel(form.Documento, label);
@@ -1016,9 +1020,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     setLicCaducidad(toDate(map.get("Licencia")?.Caducidad ?? null));
     setCarnetEmision(toDate(map.get("Carnet de sanidad")?.Emision ?? null));
     setPenalesEmision(toDate(map.get("Antecedentes penales")?.Emision ?? null));
-    setPolicialesEmision(
-      toDate(map.get("Antecedentes policiales")?.Emision ?? null)
-    );
+    setPolicialesEmision(toDate(map.get("Antecedentes policiales")?.Emision ?? null));
 
     const defs = [
       { key: "DNI", tipo: "cad" as const, fechaRaw: map.get("DNI")?.Caducidad ?? null },
@@ -1080,7 +1082,6 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   async function loadFromGridItem(it: any) {
     touch();
 
-    // Si Empresa está editable, traemos el Proveedor del registro seleccionado
     if (!bloquearEmpresa) {
       const pid = it.ProveedorId ? Number(it.ProveedorId) : null;
       setProveedorId(pid);
@@ -1225,7 +1226,11 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       if (modo === "Ingresar") {
         await crearEnPersonas();
 
-        await upsertDocRow("DNI", { Caducidad: dateToISO(dniCaducidad) }, dniFile ?? undefined);
+        await upsertDocRow(
+          "DNI",
+          { Caducidad: dateToISO(dniCaducidad) },
+          dniFile ?? undefined
+        );
 
         if (showLicenciaCat) {
           await upsertDocRow(
@@ -1263,7 +1268,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         for (let i = 0; i < docRows.length; i++) {
           const r = docRows[i];
           const fields =
-            r.tipo === "cad" ? { Caducidad: dateToISO(r.fecha) } : { Emision: dateToISO(r.fecha) };
+            r.tipo === "cad"
+              ? { Caducidad: dateToISO(r.fecha) }
+              : { Emision: dateToISO(r.fecha) };
           try {
             await upsertDocRow(r.label, fields, r.file || undefined);
           } catch (e) {
@@ -1307,7 +1314,6 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     setMensaje(null);
     setError(null);
 
-    // ✅ Si Empresa está editable, obligamos a seleccionar una
     if (!bloquearEmpresa && !proveedorId) {
       setError("Empresa es obligatoria.");
       return;
@@ -1322,6 +1328,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       return;
     }
     if (errorDocs) {
+      // Importante: usamos setError para que el foco vaya al banner principal
       setError(errorDocs);
       return;
     }
@@ -1345,7 +1352,6 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         key={formKey}
         tokens={stackTokens}
         styles={{ root: { maxWidth: 1024, margin: "0 auto", padding: 12 } }}
-        // ✅ FIX: ayuda a Fluent a manejar foco/scroll dentro de modales con contenido scrolleable
         data-is-scrollable="true"
       >
         {/* ✅ Ancla para volver arriba al limpiar */}
@@ -1477,16 +1483,39 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
             {mensaje}
           </MessageBar>
         )}
+
+        {/* ✅ Contenedor focuseable para enviar foco al error */}
         {error && (
-          <MessageBar messageBarType={MessageBarType.error} isMultiline={true}>
-            {error}
-          </MessageBar>
+          <div
+            ref={errorRef}
+            tabIndex={-1}
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            style={{ outline: "none" }}
+          >
+            <MessageBar messageBarType={MessageBarType.error} isMultiline={true}>
+              {error}
+            </MessageBar>
+          </div>
         )}
-        {errorDocs && (
-          <MessageBar messageBarType={MessageBarType.error} isMultiline={true}>
-            {errorDocs}
-          </MessageBar>
+
+        {/* ✅ Si hay errorDocs sin setError, igual permitimos foco */}
+        {errorDocs && !error && (
+          <div
+            ref={errorDocsRef}
+            tabIndex={-1}
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            style={{ outline: "none" }}
+          >
+            <MessageBar messageBarType={MessageBarType.error} isMultiline={true}>
+              {errorDocs}
+            </MessageBar>
+          </div>
         )}
+
         {modo === "Ingresar" && !docsObligIngresar && !errorDocs && (
           <MessageBar messageBarType={MessageBarType.warning} isMultiline={false}>
             DNI requiere fecha. Carnet de sanidad y los certificados (penales y policiales)
@@ -1518,7 +1547,6 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
             Datos personales
           </Label>
 
-          {/* mantiene compat con lo que ya venías haciendo */}
           <input type="hidden" name="ProveedorTitle" value={proveedorTitleOculto} />
 
           <Stack horizontal wrap tokens={stackTokens}>
