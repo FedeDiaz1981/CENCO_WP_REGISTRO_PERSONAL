@@ -11,8 +11,6 @@ import {
   IDropdownOption,
   PrimaryButton,
   DefaultButton,
-  ChoiceGroup,
-  IChoiceGroupOption,
   DatePicker,
   DayOfWeek,
   MessageBar,
@@ -29,6 +27,8 @@ import {
   Dialog,
   DialogType,
   DialogFooter,
+  IButtonStyles,
+  IMessageBarStyles,
 } from "@fluentui/react";
 
 import "@pnp/sp/webs";
@@ -95,6 +95,7 @@ const LST_PROVEEDORES = "Proveedores";
 
 // tokens de Stack
 const stackTokens: { childrenGap: number } = { childrenGap: 12 };
+const GRID_PAGE_SIZE = 10;
 
 const esc = (s: string) => s.replace(/'/g, "''");
 const dateToISO = (d?: Date | null) => (d ? d.toISOString() : null);
@@ -110,43 +111,379 @@ const theme = createTheme({
   palette: {
     themePrimary: "#005596",
     themeLighterAlt: "#f2f7fb",
-    themeLighter: "#d6e5f2",
-    themeLight: "#b7d0e7",
-    themeTertiary: "#71a5d0",
-    themeSecondary: "#357fba",
+    themeLighter: "#deebf8",
+    themeLight: "#c2daf1",
+    themeTertiary: "#7eb2db",
+    themeSecondary: "#2f7fc0",
     themeDarkAlt: "#004d87",
-    themeDark: "#00416f",
+    themeDark: "#00406f",
     themeDarker: "#002f51",
-    neutralLighterAlt: "#f5f5f5",
-    neutralLighter: "#f0f0f0",
-    neutralLight: "#e6e6e6",
-    neutralQuaternaryAlt: "#d6d6d6",
-    neutralQuaternary: "#cccccc",
-    neutralTertiaryAlt: "#c4c4c4",
+    neutralLighterAlt: "#f4f9ff",
+    neutralLighter: "#edf4fb",
+    neutralLight: "#d7e5f3",
+    neutralQuaternaryAlt: "#ccdaea",
+    neutralQuaternary: "#c1d3e6",
+    neutralTertiaryAlt: "#b5c7dc",
     neutralTertiary: "#333333",
-    neutralSecondary: "#2d2d2d",
-    neutralPrimaryAlt: "#272727",
-    neutralPrimary: "#333333",
+    neutralSecondary: "#55687c",
+    neutralPrimaryAlt: "#233140",
+    neutralPrimary: "#1e2a36",
     neutralDark: "#1f1f1f",
     black: "#1a1a1a",
     white: "#ffffff",
   },
   effects: {
-    roundedCorner2: "12px",
-    elevation8: "0 6px 18px rgba(0,0,0,.05)" as any,
+    roundedCorner2: "18px",
+    elevation8: "0 12px 28px rgba(0,87,166,.12)" as any,
   },
 });
 
+const BRAND = {
+  canvas: "#eef4fb",
+  shell: "#f7fbff",
+  ink: "#1e2a36",
+  muted: "#617284",
+  border: "#cad9ea",
+};
+
+const HERO_BG =
+  "radial-gradient(circle at 16% 18%, rgba(255,255,255,.18) 0 72px, transparent 73px), radial-gradient(circle at 86% -12%, rgba(255,255,255,.18) 0 118px, transparent 120px), linear-gradient(135deg, #005596 0%, #0067b2 48%, #0072bc 100%)";
+
+const pageShellStyles = {
+  root: {
+    maxWidth: 1040,
+    margin: "0 auto",
+    padding: 18,
+    background: `linear-gradient(180deg, ${BRAND.shell} 0%, ${BRAND.canvas} 100%)`,
+    borderRadius: 32,
+    border: `1px solid ${BRAND.border}`,
+    boxShadow: "0 24px 54px rgba(0,87,166,.12)",
+  },
+};
+
+const heroPanelStyles = {
+  root: {
+    background: HERO_BG,
+    borderRadius: 26,
+    padding: 24,
+    boxShadow: "0 22px 42px rgba(0,87,166,.22)",
+    width: "100%",
+    overflow: "hidden" as const,
+  },
+};
+
+const sectionCardStyles = {
+  root: {
+    background: "rgba(255,255,255,.92)",
+    borderRadius: 24,
+    padding: 20,
+    border: `1px solid ${BRAND.border}`,
+    boxShadow: "0 16px 32px rgba(0,87,166,.08)",
+  },
+};
+
+const sectionTitleStyles = {
+  root: {
+    display: "inline-flex" as const,
+    alignSelf: "flex-start" as const,
+    padding: "8px 16px",
+    borderRadius: 999,
+    background: "linear-gradient(135deg, #005596 0%, #0072bc 100%)",
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: 700 as const,
+    lineHeight: 1.2,
+    boxShadow: "0 10px 18px rgba(0,87,166,.18)",
+    marginBottom: 6,
+  },
+};
+
+const MESSAGE_BAR_FONT_FAMILY = "\"Segoe UI\", Tahoma, Geneva, Verdana, sans-serif";
+
+const messageBarStyles: IMessageBarStyles = {
+  root: {
+    borderRadius: 2,
+    overflow: "hidden",
+    boxShadow: "none",
+  },
+  content: {
+    padding: "12px 16px",
+  },
+  iconContainer: {
+    alignSelf: "flex-start",
+    paddingTop: 2,
+  },
+  icon: {
+    fontSize: 16,
+  },
+  text: {
+    fontSize: 14,
+    lineHeight: 1.5,
+    fontFamily: MESSAGE_BAR_FONT_FAMILY,
+  },
+  innerText: {
+    fontSize: 14,
+    lineHeight: 1.5,
+    fontFamily: MESSAGE_BAR_FONT_FAMILY,
+    fontWeight: 400,
+  },
+};
+
+const errorMessageBarStyles: IMessageBarStyles = {
+  root: {
+    borderRadius: 2,
+    overflow: "hidden",
+    boxShadow: "none",
+    background: "#fde7e9",
+    border: "1px solid #f1c5ca",
+  },
+  content: {
+    padding: "12px 16px",
+  },
+  iconContainer: {
+    alignSelf: "flex-start",
+    paddingTop: 2,
+  },
+  icon: {
+    fontSize: 16,
+    color: "#d13438",
+  },
+  text: {
+    fontSize: 14,
+    lineHeight: 1.5,
+    fontFamily: MESSAGE_BAR_FONT_FAMILY,
+    color: "#323130",
+  },
+  innerText: {
+    fontSize: 14,
+    lineHeight: 1.5,
+    fontFamily: MESSAGE_BAR_FONT_FAMILY,
+    fontWeight: 400,
+    color: "#323130",
+  },
+};
+
+const errorMessageBarIconProps = { iconName: "StatusErrorFull" };
+
+const dangerBannerStyles = {
+  root: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+    width: "100%",
+    padding: "12px 16px",
+    boxSizing: "border-box" as const,
+    borderRadius: 2,
+    border: "1px solid #f1c5ca",
+    background: "#fde7e9",
+  },
+  icon: {
+    fontSize: 16,
+    color: "#d13438",
+    marginTop: 2,
+    flexShrink: 0,
+  },
+  text: {
+    flex: 1,
+    minWidth: 0,
+    color: "#323130",
+    fontFamily: MESSAGE_BAR_FONT_FAMILY,
+    fontSize: 14,
+    lineHeight: "21px",
+    fontWeight: 400,
+    whiteSpace: "normal" as const,
+    wordBreak: "break-word" as const,
+  },
+};
+
+const infoBannerStyles = {
+  root: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+    width: "100%",
+    padding: "12px 16px",
+    boxSizing: "border-box" as const,
+    borderRadius: 2,
+    border: "1px solid #e1dfdd",
+    background: "#f3f2f1",
+  },
+  icon: {
+    fontSize: 16,
+    color: "#605e5c",
+    marginTop: 2,
+    flexShrink: 0,
+  },
+  text: {
+    flex: 1,
+    minWidth: 0,
+    color: "#323130",
+    fontFamily: MESSAGE_BAR_FONT_FAMILY,
+    fontSize: 14,
+    lineHeight: "21px",
+    fontWeight: 400,
+    whiteSpace: "normal" as const,
+    wordBreak: "break-word" as const,
+  },
+};
+
+const primaryButtonStyles: IButtonStyles = {
+  root: {
+    minHeight: 44,
+    padding: "0 20px",
+    borderRadius: 999,
+    border: "none",
+    background: "linear-gradient(135deg, #005596 0%, #0072bc 100%)",
+    boxShadow: "0 12px 22px rgba(0,87,166,.2)",
+  },
+  rootHovered: {
+    background: "linear-gradient(135deg, #004d87 0%, #0067b2 100%)",
+    boxShadow: "0 14px 24px rgba(0,87,166,.24)",
+  },
+  rootPressed: {
+    background: "linear-gradient(135deg, #00406f 0%, #005596 100%)",
+  },
+  label: {
+    fontWeight: 700,
+    color: "#ffffff",
+  },
+  icon: {
+    color: "#ffffff",
+  },
+};
+
+const secondaryButtonStyles: IButtonStyles = {
+  root: {
+    minHeight: 44,
+    padding: "0 20px",
+    borderRadius: 999,
+    border: `1px solid ${BRAND.border}`,
+    background: "rgba(255,255,255,.92)",
+    boxShadow: "0 8px 18px rgba(0,87,166,.08)",
+  },
+  rootHovered: {
+    background: "#ffffff",
+    borderColor: "#8bb8df",
+  },
+  label: {
+    fontWeight: 600,
+    color: BRAND.ink,
+  },
+};
+
+const modeButtonStyles: IButtonStyles = {
+  root: {
+    minWidth: 176,
+    minHeight: 112,
+    padding: "16px 18px",
+    borderRadius: 24,
+    border: "1px solid rgba(255,255,255,.26)",
+    background: "rgba(255,255,255,.14)",
+    boxShadow: "0 14px 24px rgba(0,0,0,.12)",
+    backdropFilter: "blur(10px)",
+    color: "#ffffff",
+  },
+  rootHovered: {
+    background: "rgba(255,255,255,.22)",
+    borderColor: "rgba(255,255,255,.34)",
+    transform: "translateY(-1px)",
+  },
+  rootPressed: {
+    background: "rgba(255,255,255,.28)",
+  },
+  rootChecked: {
+    background: "#ffffff",
+    borderColor: "#ffffff",
+    boxShadow: "0 12px 22px rgba(0,0,0,.14)",
+    color: "#005596",
+  },
+  rootCheckedHovered: {
+    background: "#ffffff",
+    borderColor: "#ffffff",
+    boxShadow: "0 12px 22px rgba(0,0,0,.14)",
+    color: "#005596",
+  },
+  flexContainer: {
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+  },
+  icon: {
+    fontSize: 34,
+    height: 40,
+    lineHeight: "40px",
+    margin: 0,
+    color: "inherit",
+  },
+  textContainer: {
+    width: "100%",
+    display: "flex",
+    justifyContent: "center",
+  },
+  label: {
+    width: "100%",
+    textAlign: "center",
+    fontWeight: 600,
+    lineHeight: 1.2,
+    whiteSpace: "normal",
+    margin: 0,
+    color: "inherit",
+  },
+};
+
+const modeTileWrapStyles = {
+  root: {
+    position: "relative" as const,
+  },
+};
+
+const modeTileDotStyles = {
+  position: "absolute" as const,
+  top: 10,
+  right: 10,
+  width: 12,
+  height: 12,
+  borderRadius: "50%",
+  border: "2px solid #ffffff",
+  background: "#0072bc",
+  boxShadow: "0 0 0 1px rgba(0,0,0,.12)",
+};
+
 // estilos para que los campos no pisen el borde redondeado del contenedor
 const roundedField = {
-  fieldGroup: { borderRadius: 10 },
+  fieldGroup: {
+    borderRadius: 18,
+    minHeight: 44,
+    borderColor: BRAND.border,
+    background: theme.palette.white,
+    boxShadow: "0 4px 14px rgba(0,87,166,.05)",
+  },
+  field: {
+    fontSize: 14,
+  },
 };
 const roundedDropdown = {
-  title: { borderRadius: 10 },
+  title: {
+    borderRadius: 18,
+    minHeight: 44,
+    lineHeight: 42,
+    borderColor: BRAND.border,
+    background: theme.palette.white,
+    boxShadow: "0 4px 14px rgba(0,87,166,.05)",
+  },
 };
 const roundedDatePicker = {
   textField: {
-    selectors: { ".ms-TextField-fieldGroup": { borderRadius: 10 } },
+    selectors: {
+      ".ms-TextField-fieldGroup": {
+        borderRadius: 18,
+        minHeight: 44,
+        borderColor: BRAND.border,
+        background: theme.palette.white,
+        boxShadow: "0 4px 14px rgba(0,87,166,.05)",
+      },
+    },
   },
 };
 
@@ -287,11 +624,11 @@ const DocCard: React.FC<DocCardProps> = ({
       tokens={{ childrenGap: 8 }}
       styles={{
         root: {
-          border: `1px solid ${theme.palette.neutralLight}`,
-          borderRadius: 12,
-          padding: 12,
-          boxShadow: theme.effects.elevation8 as any,
-          background: theme.palette.white,
+          border: `1px solid ${BRAND.border}`,
+          borderRadius: 22,
+          padding: 14,
+          boxShadow: "0 16px 30px rgba(0,87,166,.08)",
+          background: "linear-gradient(180deg, rgba(255,255,255,.98) 0%, #f6fbff 100%)",
           minWidth: 240,
           maxWidth: 260,
         },
@@ -351,6 +688,7 @@ const DocCard: React.FC<DocCardProps> = ({
             text="Adjuntar archivo"
             iconProps={{ iconName: "Upload" }}
             onClick={() => fileInputRef.current?.click()}
+            styles={secondaryButtonStyles}
           />
           <div style={{ fontSize: 12, marginTop: 4 }}>
             {file ? file.name : "-"}
@@ -784,6 +1122,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   const [cargandoGrid, setCargandoGrid] = React.useState(false);
 
   const [queryGrid, setQueryGrid] = React.useState("");
+  const [gridPage, setGridPage] = React.useState(1);
   const itemsProveedorFiltrados = React.useMemo(() => {
     const q = queryGrid.trim().toLowerCase();
     if (!q) return itemsProveedor;
@@ -804,6 +1143,22 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       return txt.indexOf(q) !== -1;
     });
   }, [itemsProveedor, queryGrid]);
+  const totalGridPages = React.useMemo(
+    () => Math.max(1, Math.ceil(itemsProveedorFiltrados.length / GRID_PAGE_SIZE)),
+    [itemsProveedorFiltrados.length]
+  );
+  const itemsProveedorPagina = React.useMemo(() => {
+    const start = (gridPage - 1) * GRID_PAGE_SIZE;
+    return itemsProveedorFiltrados.slice(start, start + GRID_PAGE_SIZE);
+  }, [gridPage, itemsProveedorFiltrados]);
+
+  React.useEffect(() => {
+    setGridPage(1);
+  }, [queryGrid, itemsProveedor]);
+
+  React.useEffect(() => {
+    setGridPage((prev) => Math.min(prev, totalGridPages));
+  }, [totalGridPages]);
 
   const selectionRef = React.useRef<Selection>();
   if (!selectionRef.current) {
@@ -1185,10 +1540,10 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
 
   const onCancelar = () => limpiar();
 
-  const modoOptions: IChoiceGroupOption[] = [
-    { key: "Ingresar", text: "Ingresar", iconProps: { iconName: "Add" } },
-    { key: "Modificar", text: "Modificar", iconProps: { iconName: "Edit" } },
-    { key: "Dar de baja", text: "Dar de baja", iconProps: { iconName: "Delete" } },
+  const modoOptions: Array<{ key: Modo; text: string; iconName: string }> = [
+    { key: "Ingresar", text: "Ingresar", iconName: "Add" },
+    { key: "Modificar", text: "Modificar", iconName: "Edit" },
+    { key: "Dar de baja", text: "Dar de baja", iconName: "Delete" },
   ];
 
   // ======= validación de docs obligatorios para Ingresar =======
@@ -1421,7 +1776,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       <Stack
         key={formKey}
         tokens={stackTokens}
-        styles={{ root: { maxWidth: 1024, margin: "0 auto", padding: 12 } }}
+        styles={pageShellStyles}
         data-is-scrollable="true"
       >
         {/* ✅ Ancla para volver arriba al limpiar */}
@@ -1429,74 +1784,79 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
 
         {/* Barra de modo */}
         <Stack
-          horizontal
-          wrap
-          verticalAlign="center"
-          tokens={{ childrenGap: 16 }}
-          styles={{
-            root: {
-              background: theme.palette.white,
-              borderRadius: 12,
-              padding: 12,
-              boxShadow: theme.effects.elevation8 as any,
-              width: "100%",
-              margin: "0 auto",
-            },
-          }}
+          tokens={{ childrenGap: 20 }}
+          styles={heroPanelStyles}
         >
-          <Icon
-            iconName="Contact"
-            styles={{ root: { fontSize: 22, color: theme.palette.themePrimary } }}
-          />
-          <Label
-            styles={{
-              root: {
-                fontSize: 18,
-                fontWeight: 600,
-                color: theme.palette.themePrimary,
-              },
-            }}
-          >
-            Registro de Personal
-          </Label>
-
-          <StackItem grow>
-            <Stack horizontal horizontalAlign="center">
-              <ChoiceGroup
-                selectedKey={modo}
-                options={modoOptions}
-                onChange={(_, opt) => {
-                  touch();
-                  const next = (opt?.key as Modo) ?? "Ingresar";
-                  setModo(next);
-                  if (next === "Ingresar") {
-                    limpiar();
-                    try {
-                      selectionRef.current?.setAllSelected(false);
-                    } catch {
-                      // nada
-                    }
-                  }
-                }}
+          <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 14 }}>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: "50%",
+                background: "rgba(255,255,255,.16)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "1px solid rgba(255,255,255,.24)",
+              }}
+            >
+              <Icon
+                iconName="Contact"
+                styles={{ root: { fontSize: 26, color: theme.palette.white } }}
               />
-            </Stack>
-          </StackItem>
+            </div>
+            <div>
+              <div
+                style={{
+                  fontSize: 32,
+                  fontWeight: 700,
+                  lineHeight: 1.05,
+                  color: theme.palette.white,
+                }}
+              >
+                Personal
+              </div>
+            </div>
+          </Stack>
+
+          <Stack horizontal wrap tokens={{ childrenGap: 14 }}>
+            {modoOptions.map((opt) => (
+              <Stack
+                key={opt.key}
+                styles={modeTileWrapStyles}
+              >
+                <DefaultButton
+                  text={opt.text}
+                  iconProps={{ iconName: opt.iconName }}
+                  checked={modo === opt.key}
+                  styles={modeButtonStyles}
+                  onClick={() => {
+                    touch();
+                    const next = opt.key;
+                    setModo(next);
+                    if (next === "Ingresar") {
+                      limpiar();
+                      try {
+                        selectionRef.current?.setAllSelected(false);
+                      } catch {
+                        // nada
+                      }
+                    }
+                  }}
+                />
+                {modo === opt.key && <span style={modeTileDotStyles} />}
+              </Stack>
+            ))}
+          </Stack>
         </Stack>
 
         {/* Grilla de personas del proveedor */}
         {(modo === "Modificar" || modo === "Dar de baja") && (
           <Stack
             tokens={{ childrenGap: 8 }}
-            styles={{
-              root: {
-                background: theme.palette.white,
-                borderRadius: 12,
-                padding: 12,
-                boxShadow: theme.effects.elevation8 as any,
-              },
-            }}
+            styles={sectionCardStyles}
           >
-            <Label styles={{ root: { fontWeight: 600 } }}>
+            <Label styles={sectionTitleStyles}>
               Registros del proveedor:{" "}
               {filtrarPorProveedor
                 ? proveedorTitleOculto || "(sin proveedor seleccionado)"
@@ -1522,40 +1882,87 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 />
 
                 {itemsProveedorFiltrados.length === 0 ? (
-                  <MessageBar messageBarType={MessageBarType.info} isMultiline={false}>
-                    {queryGrid ? "Sin resultados para la búsqueda." : "No hay registros."}
-                  </MessageBar>
-                ) : (
-                  <div style={{ width: "100%", overflowX: "auto" }}>
-                    <DetailsList
-                      items={itemsProveedorFiltrados}
-                      columns={columns}
-                      selectionMode={SelectionMode.single}
-                      selection={selectionRef.current}
-                      compact
-                      styles={{ root: { minWidth: 560 } }}
-                      onItemInvoked={(it) =>
-                        loadFromGridItem(it as any).catch((e) =>
-                          console.warn("onItemInvoked -> loadFromGridItem:", e)
-                        )
-                      }
+                  <div style={infoBannerStyles.root}>
+                    <Icon
+                      iconName="Info"
+                      styles={{ root: infoBannerStyles.icon }}
                     />
+                    <div style={infoBannerStyles.text}>
+                      {queryGrid ? "Sin resultados para la búsqueda." : "No hay registros."}
+                    </div>
                   </div>
+                ) : (
+                  <Stack tokens={{ childrenGap: 10 }}>
+                    <div style={{ width: "100%", overflowX: "auto" }}>
+                      <DetailsList
+                        items={itemsProveedorPagina}
+                        columns={columns}
+                        selectionMode={SelectionMode.single}
+                        selection={selectionRef.current}
+                        compact
+                        styles={{ root: { minWidth: 560 } }}
+                        onItemInvoked={(it) =>
+                          loadFromGridItem(it as any).catch((e) =>
+                            console.warn("onItemInvoked -> loadFromGridItem:", e)
+                          )
+                        }
+                      />
+                    </div>
+
+                    <Stack
+                      horizontal
+                      wrap
+                      verticalAlign="center"
+                      horizontalAlign="space-between"
+                      tokens={{ childrenGap: 10 }}
+                    >
+                      <div style={{ fontSize: 13, color: BRAND.muted }}>
+                        Mostrando {(gridPage - 1) * GRID_PAGE_SIZE + 1}-
+                        {Math.min(gridPage * GRID_PAGE_SIZE, itemsProveedorFiltrados.length)} de{" "}
+                        {itemsProveedorFiltrados.length}
+                      </div>
+                      <Stack horizontal verticalAlign="center" tokens={{ childrenGap: 8 }}>
+                        <DefaultButton
+                          text="Anterior"
+                          iconProps={{ iconName: "ChevronLeft" }}
+                          onClick={() => setGridPage((prev) => Math.max(1, prev - 1))}
+                          disabled={gridPage === 1}
+                          styles={secondaryButtonStyles}
+                        />
+                        <div style={{ fontSize: 13, fontWeight: 600, color: BRAND.ink }}>
+                          Página {gridPage} de {totalGridPages}
+                        </div>
+                        <DefaultButton
+                          text="Siguiente"
+                          iconProps={{ iconName: "ChevronRight" }}
+                          onClick={() =>
+                            setGridPage((prev) => Math.min(totalGridPages, prev + 1))
+                          }
+                          disabled={gridPage === totalGridPages}
+                          styles={secondaryButtonStyles}
+                        />
+                      </Stack>
+                    </Stack>
+                  </Stack>
                 )}
               </>
             )}
           </Stack>
         )}
 
-        {/* Mensajes */}
-        {mensaje && (
-          <MessageBar messageBarType={MessageBarType.success} isMultiline={false}>
+        {/* Mensajes movidos al final del formulario */}
+        {false && mensaje && (
+          <MessageBar
+            messageBarType={MessageBarType.success}
+            isMultiline={false}
+            styles={messageBarStyles}
+          >
             {mensaje}
           </MessageBar>
         )}
 
         {/* ✅ Contenedor focuseable para enviar foco al error */}
-        {error && (
+        {false && error && (
           <div
             ref={errorRef}
             tabIndex={-1}
@@ -1564,14 +1971,19 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
             aria-atomic="true"
             style={{ outline: "none" }}
           >
-            <MessageBar messageBarType={MessageBarType.error} isMultiline={true}>
+            <MessageBar
+              messageBarType={MessageBarType.error}
+              isMultiline={true}
+              styles={errorMessageBarStyles}
+              messageBarIconProps={errorMessageBarIconProps}
+            >
               {error}
             </MessageBar>
           </div>
         )}
 
         {/* ✅ Mostramos la validación en vivo sin mover el foco del campo editado */}
-        {errorDocs && !error && (
+        {false && errorDocs && !error && (
           <div
             tabIndex={-1}
             role="alert"
@@ -1579,14 +1991,24 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
             aria-atomic="true"
             style={{ outline: "none" }}
           >
-            <MessageBar messageBarType={MessageBarType.error} isMultiline={true}>
+            <MessageBar
+              messageBarType={MessageBarType.error}
+              isMultiline={true}
+              styles={errorMessageBarStyles}
+              messageBarIconProps={errorMessageBarIconProps}
+            >
               {errorDocs}
             </MessageBar>
           </div>
         )}
 
-        {modo === "Ingresar" && !docsObligIngresar && !errorDocs && (
-          <MessageBar messageBarType={MessageBarType.warning} isMultiline={false}>
+        {false && modo === "Ingresar" && !docsObligIngresar && !errorDocs && (
+          <MessageBar
+            messageBarType={MessageBarType.warning}
+            isMultiline={true}
+            styles={errorMessageBarStyles}
+            messageBarIconProps={errorMessageBarIconProps}
+          >
             DNI requiere fecha. Carnet de sanidad y los certificados (penales y policiales)
             requieren fecha y archivo. Si corresponde, la Licencia requiere fecha.
           </MessageBar>
@@ -1595,24 +2017,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         {/* Sección 2 - Datos personales */}
         <Stack
           tokens={{ childrenGap: 8 }}
-          styles={{
-            root: {
-              background: theme.palette.white,
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: theme.effects.elevation8 as any,
-            },
-          }}
+          styles={sectionCardStyles}
         >
-          <Label
-            styles={{
-              root: {
-                fontWeight: 600,
-                fontSize: 16,
-                color: theme.palette.themePrimary,
-              },
-            }}
-          >
+          <Label styles={sectionTitleStyles}>
             Datos personales
           </Label>
 
@@ -1715,24 +2122,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         {/* Datos laborales */}
         <Stack
           tokens={{ childrenGap: 8 }}
-          styles={{
-            root: {
-              background: theme.palette.white,
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: theme.effects.elevation8 as any,
-            },
-          }}
+          styles={sectionCardStyles}
         >
-          <Label
-            styles={{
-              root: {
-                fontWeight: 600,
-                fontSize: 16,
-                color: theme.palette.themePrimary,
-              },
-            }}
-          >
+          <Label styles={sectionTitleStyles}>
             Datos laborales
           </Label>
 
@@ -1804,16 +2196,11 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         </Stack>
 
         {/* Sección 3 - Documentación */}
-        <Stack tokens={{ childrenGap: 12 }}>
-          <Label
-            styles={{
-              root: {
-                fontWeight: 600,
-                fontSize: 16,
-                color: theme.palette.themePrimary,
-              },
-            }}
-          >
+        <Stack
+          tokens={{ childrenGap: 12 }}
+          styles={sectionCardStyles}
+        >
+          <Label styles={sectionTitleStyles}>
             Documentación
           </Label>
 
@@ -1874,9 +2261,15 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
           {modo === "Modificar" && (
             <Stack tokens={{ childrenGap: 8 }}>
               {!form.Documento?.trim() ? (
-                <MessageBar messageBarType={MessageBarType.info} isMultiline={false}>
-                  Seleccioná un registro en la grilla superior para ver su documentación.
-                </MessageBar>
+                <div style={infoBannerStyles.root}>
+                  <Icon
+                    iconName="Info"
+                    styles={{ root: infoBannerStyles.icon }}
+                  />
+                  <div style={infoBannerStyles.text}>
+                    Seleccioná un registro en la grilla superior para ver su documentación.
+                  </div>
+                </div>
               ) : (
                 <Stack horizontal wrap tokens={{ childrenGap: 12 }}>
                   {docRows.map((r) => (
@@ -1916,24 +2309,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         {/* Sección 4 - Notificaciones */}
         <Stack
           tokens={{ childrenGap: 8 }}
-          styles={{
-            root: {
-              background: theme.palette.white,
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: theme.effects.elevation8 as any,
-            },
-          }}
+          styles={sectionCardStyles}
         >
-          <Label
-            styles={{
-              root: {
-                fontWeight: 600,
-                fontSize: 16,
-                color: theme.palette.themePrimary,
-              },
-            }}
-          >
+          <Label styles={sectionTitleStyles}>
             Notificaciones
           </Label>
           <Stack horizontal wrap tokens={stackTokens}>
@@ -1953,6 +2331,76 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         </Stack>
 
         {/* Modal de confirmación para Dar de baja */}
+        {/* Mensajes entre notificaciones y acciones */}
+        {mensaje && (
+          <MessageBar
+            messageBarType={MessageBarType.success}
+            isMultiline={false}
+            styles={messageBarStyles}
+          >
+            {mensaje}
+          </MessageBar>
+        )}
+
+        {/* Contenedor focuseable para enviar foco al error */}
+        {error && (
+          <div
+            ref={errorRef}
+            tabIndex={-1}
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            style={{ outline: "none" }}
+          >
+            <div style={dangerBannerStyles.root}>
+              <Icon
+                iconName="StatusErrorFull"
+                styles={{ root: dangerBannerStyles.icon }}
+              />
+              <div style={dangerBannerStyles.text}>{error}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Mostramos la validacion en vivo sin mover el foco del campo editado */}
+        {errorDocs && !error && (
+          <div
+            tabIndex={-1}
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            style={{ outline: "none" }}
+          >
+            <div style={dangerBannerStyles.root}>
+              <Icon
+                iconName="StatusErrorFull"
+                styles={{ root: dangerBannerStyles.icon }}
+              />
+              <div style={dangerBannerStyles.text}>{errorDocs}</div>
+            </div>
+          </div>
+        )}
+
+        {modo === "Ingresar" && !docsObligIngresar && !errorDocs && (
+          <div
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            style={dangerBannerStyles.root}
+          >
+            <Icon
+              iconName="StatusErrorFull"
+              styles={{ root: dangerBannerStyles.icon }}
+            />
+            <div style={dangerBannerStyles.text}>
+              DNI requiere fecha. Carnet de sanidad y los certificados (penales y
+              policiales) requieren fecha y archivo. Si corresponde, la Licencia
+              requiere fecha.
+            </div>
+          </div>
+        )}
+
+        {/* Modal de confirmacion para Dar de baja */}
         <Dialog
           hidden={!showConfirmBaja}
           onDismiss={() => {
@@ -1978,6 +2426,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
               touch();
               setMotivoBaja(v || "");
             }}
+            styles={roundedField}
           />
 
           <DialogFooter>
@@ -1985,6 +2434,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
               text="Confirmar"
               onClick={onConfirmarBaja}
               disabled={!motivoBaja.trim() || guardando}
+              styles={primaryButtonStyles}
             />
             <DefaultButton
               text="Cancelar"
@@ -1995,19 +2445,35 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 }
               }}
               disabled={guardando}
+              styles={secondaryButtonStyles}
             />
           </DialogFooter>
         </Dialog>
 
         {/* Sección 5 - Acciones */}
-        <Stack horizontal wrap tokens={stackTokens} verticalAlign="center">
-          <PrimaryButton text="Guardar" onClick={onGuardar} disabled={!puedeGuardar} />
-          <DefaultButton text="Cancelar" onClick={onCancelar} disabled={guardando} />
-          {guardando && (
-            <StackItem grow>
-              <ProgressIndicator label="Guardando..." />
-            </StackItem>
-          )}
+        <Stack tokens={{ childrenGap: 12 }} styles={sectionCardStyles}>
+          <Label styles={sectionTitleStyles}>Acciones</Label>
+          <Stack horizontal wrap tokens={stackTokens} verticalAlign="center">
+            <PrimaryButton
+              text="Guardar"
+              iconProps={{ iconName: "Save" }}
+              onClick={onGuardar}
+              disabled={!puedeGuardar}
+              styles={primaryButtonStyles}
+            />
+            <DefaultButton
+              text="Cancelar"
+              iconProps={{ iconName: "Clear" }}
+              onClick={onCancelar}
+              disabled={guardando}
+              styles={secondaryButtonStyles}
+            />
+            {guardando && (
+              <StackItem grow styles={{ root: { minWidth: 220 } }}>
+                <ProgressIndicator label="Guardando..." />
+              </StackItem>
+            )}
+          </Stack>
         </Stack>
       </Stack>
     </ThemeProvider>
