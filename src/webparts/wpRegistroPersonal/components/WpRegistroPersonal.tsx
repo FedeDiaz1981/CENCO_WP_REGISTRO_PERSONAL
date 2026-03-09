@@ -83,6 +83,12 @@ const opcionesCategoria: IDropdownOption[] = [
   { key: "C", text: "C" },
 ];
 
+const getDocumentoLengthRequerido = (tipo?: string): number | undefined => {
+  if (tipo === "DNI") return 8;
+  if (tipo === "Pasaporte" || tipo === "Carnet") return 9;
+  return undefined;
+};
+
 const LST_PERSONAS = "Personal";
 const LST_DOCS = "Documentacion";
 const LST_PROVEEDORES = "Proveedores";
@@ -188,6 +194,8 @@ interface DocCardProps {
   dateLabel: string;
   dateValue: Date | null;
   onDateChange: (date: Date | null) => void;
+  minDate?: Date;
+  maxDate?: Date;
   file: File | null;
   onFileChange: (file: File | null) => void;
   attachments?: Attach[];
@@ -248,13 +256,31 @@ const DocCard: React.FC<DocCardProps> = ({
   dateLabel,
   dateValue,
   onDateChange,
+  minDate,
+  maxDate,
   file,
   onFileChange,
   attachments,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const datePickerHostRef = React.useRef<HTMLDivElement>(null);
 
   const ocultarArchivo = title === "DNI" || title === "Licencia";
+
+  const restoreDateInputFocus = (): void => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const input = datePickerHostRef.current?.querySelector("input");
+        if (!input) return;
+
+        try {
+          input.focus({ preventScroll: true });
+        } catch {
+          input.focus();
+        }
+      });
+    });
+  };
 
   return (
     <Stack
@@ -282,22 +308,29 @@ const DocCard: React.FC<DocCardProps> = ({
         {title}
       </Label>
 
-      <DatePicker
-        label={dateLabel}
-        value={dateValue || undefined}
-        onSelectDate={(d) => onDateChange(d ?? null)}
-        firstDayOfWeek={DayOfWeek.Monday}
-        placeholder="dd/mm/aaaa"
-        ariaLabel={dateLabel}
-        strings={datePickerStringsEs}
-        formatDate={formatDateEs}
-        styles={roundedDatePicker}
-        // ✅ FIX: evita salto de scroll/foco al top cuando está dentro de un Modal/Dialog
-        calloutProps={{
-          doNotLayer: true,
-          setInitialFocus: false,
-        }}
-      />
+      <div ref={datePickerHostRef}>
+        <DatePicker
+          label={dateLabel}
+          value={dateValue || undefined}
+          onSelectDate={(d) => {
+            onDateChange(d ?? null);
+            restoreDateInputFocus();
+          }}
+          minDate={minDate}
+          maxDate={maxDate}
+          firstDayOfWeek={DayOfWeek.Monday}
+          placeholder="dd/mm/aaaa"
+          ariaLabel={dateLabel}
+          strings={datePickerStringsEs}
+          formatDate={formatDateEs}
+          styles={roundedDatePicker}
+          // ✅ FIX: evita salto de scroll/foco al top cuando está dentro de un Modal/Dialog
+          calloutProps={{
+            doNotLayer: true,
+            setInitialFocus: false,
+          }}
+        />
+      </div>
 
       {!ocultarArchivo && (
         <div>
@@ -364,6 +397,11 @@ const addMonthsSafe = (d: Date, months: number) => {
 const isNotOlderThanMonths = (d: Date | null, months: number) => {
   if (!d) return true;
   return addMonthsSafe(d, months) >= today0();
+};
+
+const isNotExpired = (d?: Date): boolean => {
+  if (!d) return true;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()) >= today0();
 };
 
 const cutoffSinceMonths = (months: number) => addMonthsSafe(today0(), -months);
@@ -461,11 +499,22 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   const [showConfirmBaja, setShowConfirmBaja] = React.useState(false);
   const [motivoBaja, setMotivoBaja] = React.useState("");
 
+  // ===== visibilidad dinámica por Puesto =====
+  const puestoNorm = (form.Puesto || "").toLowerCase().trim();
+  const showEspecificar = React.useMemo(() => puestoNorm === "otro", [puestoNorm]);
+  const showLicenciaCat = React.useMemo(() => puestoNorm === "conductor", [puestoNorm]);
+
   // ---- Validación de antigüedad ----
   const errorDocs = React.useMemo(() => {
     const fmt = (d: Date) => d.toLocaleDateString();
 
     if (modo === "Ingresar") {
+      if (!isNotExpired(dniCaducidad || undefined)) {
+        return 'La fecha de caducidad del "DNI" no puede estar vencida.';
+      }
+      if (showLicenciaCat && !isNotExpired(licCaducidad || undefined)) {
+        return 'La fecha de caducidad de la "Licencia" no puede estar vencida.';
+      }
       if (!isNotOlderThanMonths(carnetEmision, 6)) {
         return `La fecha de emisión del "Carnet de sanidad" no puede ser anterior a ${fmt(
           cutoffSinceMonths(6)
@@ -492,6 +541,14 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         return null;
       };
 
+      const dni = getFechaByLabel("DNI");
+      if (!isNotExpired(dni || undefined)) {
+        return 'La fecha de caducidad del "DNI" no puede estar vencida.';
+      }
+      const lic = getFechaByLabel("Licencia");
+      if (!isNotExpired(lic || undefined)) {
+        return 'La fecha de caducidad de la "Licencia" no puede estar vencida.';
+      }
       const cSan = getFechaByLabel("Carnet de sanidad");
       if (!isNotOlderThanMonths(cSan, 6)) {
         return `La fecha de emisión del "Carnet de sanidad" no puede ser anterior a ${fmt(
@@ -514,17 +571,15 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     }
 
     return null;
-  }, [modo, carnetEmision, penalesEmision, policialesEmision, docRows]);
+  }, [modo, dniCaducidad, licCaducidad, showLicenciaCat, carnetEmision, penalesEmision, policialesEmision, docRows]);
 
-  // ✅ NUEVO: refs + foco automático a mensajes de error
+  // ✅ NUEVO: foco automático solo al error principal (no a validaciones en vivo)
   const errorRef = React.useRef<HTMLDivElement | null>(null);
-  const errorDocsRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
-    if (!error && !errorDocs) return;
+    if (!error) return;
 
-    // Priorizamos el error “principal” (setError). Si no hay, vamos al errorDocs.
-    const target = error ? errorRef.current : errorDocsRef.current;
+    const target = errorRef.current;
     if (!target) return;
 
     requestAnimationFrame(() => {
@@ -535,22 +590,35 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         // ignore
       }
     });
-  }, [error, errorDocs]);
+  }, [error]);
 
   // ===== bloqueo de Datos laborales según documento =====
-  const laboralBloqueado = React.useMemo(() => {
-    const tipo = form.TipoDocumento || "";
+  const documentoLengthRequerido = React.useMemo(
+    () => getDocumentoLengthRequerido(form.TipoDocumento),
+    [form.TipoDocumento]
+  );
+
+  const documentoAyuda = React.useMemo(() => {
+    if (!form.TipoDocumento || !documentoLengthRequerido) {
+      return "Selecciona un tipo de documento para ver la cantidad de caracteres requerida.";
+    }
+
+    return `${form.TipoDocumento}: debe tener ${documentoLengthRequerido} caracteres.`;
+  }, [form.TipoDocumento, documentoLengthRequerido]);
+
+  const documentoValido = React.useMemo(() => {
     const len = (form.Documento || "").trim().length;
 
-    if (!tipo) return true;
-    if (tipo === "DNI") return len < 8;
-    return len < 9; // Pasaporte o Carnet
-  }, [form.TipoDocumento, form.Documento]);
+    if (!documentoLengthRequerido) return false;
+    return len === documentoLengthRequerido;
+  }, [documentoLengthRequerido, form.Documento]);
 
-  // ===== visibilidad dinámica por Puesto =====
-  const puestoNorm = (form.Puesto || "").toLowerCase().trim();
-  const showEspecificar = React.useMemo(() => puestoNorm === "otro", [puestoNorm]);
-  const showLicenciaCat = React.useMemo(() => puestoNorm === "conductor", [puestoNorm]);
+  const laboralBloqueado = React.useMemo(() => !documentoValido, [documentoValido]);
+
+  const onDocumentoBlur = React.useCallback((): void => {
+    if (!form.Documento?.trim() || !documentoLengthRequerido || documentoValido) return;
+    setForm((prev) => ({ ...prev, Documento: "" }));
+  }, [documentoLengthRequerido, documentoValido, form.Documento]);
 
   // =======================
   // Proveedores: cargar opciones SIEMPRE (para el modo editable)
@@ -988,7 +1056,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     file?: File | null
   ) => {
     if (!form.Documento?.trim())
-      throw new Error("Documento (Title) es obligatorio para Documentación.");
+      throw new Error("Documento es obligatorio para Documentación.");
     const existing = await getDocItemByLabel(form.Documento, label);
     let id: number;
     if (existing?.Id) {
@@ -1136,6 +1204,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
 
   const puedeGuardar =
     !guardando && !errorDocs && !error && (modo !== "Ingresar" || docsObligIngresar);
+
+  const fechaHoy = today0();
 
   // ✅ MODIFICADO: mensajes de error “de negocio” sin usar startsWith/includes (compat TS lib vieja)
   const getFriendlyError = (e: any): string => {
@@ -1500,10 +1570,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
           </div>
         )}
 
-        {/* ✅ Si hay errorDocs sin setError, igual permitimos foco */}
+        {/* ✅ Mostramos la validación en vivo sin mover el foco del campo editado */}
         {errorDocs && !error && (
           <div
-            ref={errorDocsRef}
             tabIndex={-1}
             role="alert"
             aria-live="assertive"
@@ -1627,9 +1696,11 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
             </StackItem>
             <StackItem grow styles={{ root: { minWidth: 200 } }}>
               <TextField
-                label="Documento (Title)"
+                label="Documento"
                 value={form.Documento}
                 onChange={(_, v) => onChange("Documento", v || "")}
+                onBlur={onDocumentoBlur}
+                description={documentoAyuda}
                 required
                 styles={roundedField}
                 disabled={isDarDeBaja}
@@ -1676,12 +1747,17 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 onChange={(_, opt) => {
                   touch();
                   const nuevo = String(opt?.key || "");
+                  const esConductor = nuevo.toLowerCase() === "conductor";
+                  if (!esConductor) {
+                    setLicCaducidad(null);
+                    setLicFile(null);
+                  }
                   setForm((prev) => ({
                     ...prev,
                     Puesto: nuevo,
                     Especificar: nuevo.toLowerCase() === "otro" ? prev.Especificar : "",
-                    Licencia: nuevo.toLowerCase() === "conductor" ? prev.Licencia : "",
-                    Categoria: nuevo.toLowerCase() === "conductor" ? prev.Categoria : undefined,
+                    Licencia: esConductor ? prev.Licencia : "",
+                    Categoria: esConductor ? prev.Categoria : undefined,
                   }));
                 }}
                 styles={roundedDropdown}
@@ -1748,6 +1824,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 dateLabel="Fecha de caducidad"
                 dateValue={dniCaducidad}
                 onDateChange={setDateAndTouch(setDniCaducidad)}
+                minDate={fechaHoy}
                 file={dniFile}
                 onFileChange={setFileAndTouch(setDniFile)}
               />
@@ -1758,6 +1835,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                   dateLabel="Fecha de caducidad"
                   dateValue={licCaducidad}
                   onDateChange={setDateAndTouch(setLicCaducidad)}
+                  minDate={fechaHoy}
                   file={licFile}
                   onFileChange={setFileAndTouch(setLicFile)}
                 />
@@ -1768,6 +1846,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 dateLabel="Fecha de emisión"
                 dateValue={carnetEmision}
                 onDateChange={setDateAndTouch(setCarnetEmision)}
+                maxDate={fechaHoy}
                 file={carnetFile}
                 onFileChange={setFileAndTouch(setCarnetFile)}
               />
@@ -1776,6 +1855,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 dateLabel="Fecha de emisión"
                 dateValue={penalesEmision}
                 onDateChange={setDateAndTouch(setPenalesEmision)}
+                maxDate={fechaHoy}
                 file={penalesFile}
                 onFileChange={setFileAndTouch(setPenalesFile)}
               />
@@ -1784,6 +1864,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 dateLabel="Fecha de emisión"
                 dateValue={policialesEmision}
                 onDateChange={setDateAndTouch(setPolicialesEmision)}
+                maxDate={fechaHoy}
                 file={policialesFile}
                 onFileChange={setFileAndTouch(setPolicialesFile)}
               />
@@ -1812,6 +1893,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                           )
                         );
                       }}
+                      minDate={r.tipo === "cad" ? fechaHoy : undefined}
+                      maxDate={r.tipo === "emi" ? fechaHoy : undefined}
                       file={r.file || null}
                       onFileChange={(file) => {
                         touch();
