@@ -327,6 +327,51 @@ const infoBannerStyles = {
   },
 };
 
+const successBannerStyles = {
+  root: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+    width: "100%",
+    padding: "12px 16px",
+    boxSizing: "border-box" as const,
+    borderRadius: 2,
+    border: "1px solid #b7dfb0",
+    background: "#dff6dd",
+  },
+  icon: {
+    fontSize: 16,
+    color: "#107c10",
+    marginTop: 2,
+    flexShrink: 0,
+  },
+  text: {
+    flex: 1,
+    minWidth: 0,
+    color: "#323130",
+    fontFamily: MESSAGE_BAR_FONT_FAMILY,
+    fontSize: 14,
+    lineHeight: "21px",
+    fontWeight: 400,
+    whiteSpace: "normal" as const,
+    wordBreak: "break-word" as const,
+  },
+};
+
+const requiredFieldsListStyles = {
+  title: {
+    fontWeight: 600,
+    marginBottom: 6,
+  },
+  list: {
+    margin: 0,
+    paddingLeft: 18,
+  },
+  item: {
+    marginBottom: 2,
+  },
+};
+
 const primaryButtonStyles: IButtonStyles = {
   root: {
     minHeight: 44,
@@ -601,13 +646,74 @@ const DocCard: React.FC<DocCardProps> = ({
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const datePickerHostRef = React.useRef<HTMLDivElement>(null);
+  const shouldRestoreDateFocusRef = React.useRef(false);
+  const scrollSnapshotRef = React.useRef<{
+    windowX: number;
+    windowY: number;
+    containers: Array<{
+      element: HTMLElement;
+      top: number;
+      left: number;
+    }>;
+  } | null>(null);
 
   const ocultarArchivo = title === "DNI" || title === "Licencia";
 
-  const restoreDateInputFocus = (): void => {
+  const captureScrollSnapshot = React.useCallback((): void => {
+    const host = datePickerHostRef.current;
+    const containers: Array<{
+      element: HTMLElement;
+      top: number;
+      left: number;
+    }> = [];
+
+    let current = host?.parentElement ?? null;
+    while (current) {
+      const style = window.getComputedStyle(current);
+      const overflowY = style.overflowY || "";
+      const overflowX = style.overflowX || "";
+      const isScrollable =
+        /(auto|scroll|overlay)/.test(`${overflowY} ${overflowX}`) &&
+        (current.scrollHeight > current.clientHeight ||
+          current.scrollWidth > current.clientWidth);
+
+      if (isScrollable) {
+        containers.push({
+          element: current,
+          top: current.scrollTop,
+          left: current.scrollLeft,
+        });
+      }
+
+      current = current.parentElement;
+    }
+
+    scrollSnapshotRef.current = {
+      windowX: window.scrollX,
+      windowY: window.scrollY,
+      containers,
+    };
+  }, []);
+
+  const restoreDateInputFocus = React.useCallback((): void => {
+    if (!shouldRestoreDateFocusRef.current) return;
+
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        const snapshot = scrollSnapshotRef.current;
+        if (snapshot) {
+          for (let i = 0; i < snapshot.containers.length; i++) {
+            const container = snapshot.containers[i];
+            container.element.scrollTop = container.top;
+            container.element.scrollLeft = container.left;
+          }
+
+          window.scrollTo(snapshot.windowX, snapshot.windowY);
+        }
+
         const input = datePickerHostRef.current?.querySelector("input");
+        shouldRestoreDateFocusRef.current = false;
+        scrollSnapshotRef.current = null;
         if (!input) return;
 
         try {
@@ -617,7 +723,7 @@ const DocCard: React.FC<DocCardProps> = ({
         }
       });
     });
-  };
+  }, []);
 
   return (
     <Stack
@@ -650,9 +756,11 @@ const DocCard: React.FC<DocCardProps> = ({
           label={dateLabel}
           value={dateValue || undefined}
           onSelectDate={(d) => {
+            shouldRestoreDateFocusRef.current = true;
+            captureScrollSnapshot();
             onDateChange(d ?? null);
-            restoreDateInputFocus();
           }}
+          onAfterMenuDismiss={restoreDateInputFocus}
           minDate={minDate}
           maxDate={maxDate}
           firstDayOfWeek={DayOfWeek.Monday}
@@ -951,12 +1059,15 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     return len === documentoLengthRequerido;
   }, [documentoLengthRequerido, form.Documento]);
 
-  const laboralBloqueado = React.useMemo(() => !documentoValido, [documentoValido]);
+  const documentoErrorMessage = React.useMemo(() => {
+    if (!form.Documento?.trim() || !documentoLengthRequerido || documentoValido) {
+      return undefined;
+    }
 
-  const onDocumentoBlur = React.useCallback((): void => {
-    if (!form.Documento?.trim() || !documentoLengthRequerido || documentoValido) return;
-    setForm((prev) => ({ ...prev, Documento: "" }));
-  }, [documentoLengthRequerido, documentoValido, form.Documento]);
+    return `${form.TipoDocumento}: debe tener ${documentoLengthRequerido} caracteres.`;
+  }, [documentoLengthRequerido, documentoValido, form.Documento, form.TipoDocumento]);
+
+  const laboralBloqueado = React.useMemo(() => !documentoValido, [documentoValido]);
 
   // =======================
   // Proveedores: cargar opciones SIEMPRE (para el modo editable)
@@ -1557,8 +1668,51 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     policialesFile !== null &&
     (!showLicenciaCat || licCaducidad !== null);
 
+  const requiredFieldsPendientesIngresar = React.useMemo(() => {
+    if (modo !== "Ingresar") return [];
+
+    const pendientes: string[] = [];
+
+    if (!bloquearEmpresa && !proveedorId) pendientes.push("Empresa");
+    if (!form.Nombre?.trim()) pendientes.push("Nombre");
+    if (!form.Documento?.trim()) pendientes.push("Documento");
+    if (dniCaducidad === null) pendientes.push("Fecha de caducidad del DNI");
+    if (showLicenciaCat && licCaducidad === null) {
+      pendientes.push("Fecha de caducidad de la Licencia");
+    }
+    if (carnetEmision === null) pendientes.push("Fecha de emision del Carnet de sanidad");
+    if (carnetFile === null) pendientes.push("Archivo del Carnet de sanidad");
+    if (penalesEmision === null) {
+      pendientes.push("Fecha de emision de Antecedentes penales");
+    }
+    if (penalesFile === null) pendientes.push("Archivo de Antecedentes penales");
+    if (policialesEmision === null) {
+      pendientes.push("Fecha de emision de Antecedentes policiales");
+    }
+    if (policialesFile === null) pendientes.push("Archivo de Antecedentes policiales");
+
+    return pendientes;
+  }, [
+    bloquearEmpresa,
+    proveedorId,
+    form.Nombre,
+    form.Documento,
+    modo,
+    dniCaducidad,
+    showLicenciaCat,
+    licCaducidad,
+    carnetEmision,
+    carnetFile,
+    penalesEmision,
+    penalesFile,
+    policialesEmision,
+    policialesFile,
+  ]);
+
   const puedeGuardar =
-    !guardando && !errorDocs && !error && (modo !== "Ingresar" || docsObligIngresar);
+    !guardando &&
+    !errorDocs &&
+    (modo !== "Ingresar" || requiredFieldsPendientesIngresar.length === 0);
 
   const fechaHoy = today0();
 
@@ -1746,6 +1900,10 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
 
     if (!form.Documento?.trim()) {
       setError("Documento es obligatorio.");
+      return;
+    }
+    if (documentoErrorMessage) {
+      setError(documentoErrorMessage);
       return;
     }
     if (modo !== "Dar de baja" && !form.Nombre?.trim()) {
@@ -2040,6 +2198,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                   placeholder="Seleccionar empresa…"
                   options={proveedoresOptions}
                   selectedKey={proveedorId ?? undefined}
+                  required
                   onChange={(_, opt) => {
                     touch();
                     const id = opt ? Number(opt.key) : null;
@@ -2106,8 +2265,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 label="Documento"
                 value={form.Documento}
                 onChange={(_, v) => onChange("Documento", v || "")}
-                onBlur={onDocumentoBlur}
                 description={documentoAyuda}
+                errorMessage={documentoErrorMessage}
                 required
                 styles={roundedField}
                 disabled={isDarDeBaja}
@@ -2333,13 +2492,19 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         {/* Modal de confirmación para Dar de baja */}
         {/* Mensajes entre notificaciones y acciones */}
         {mensaje && (
-          <MessageBar
-            messageBarType={MessageBarType.success}
-            isMultiline={false}
-            styles={messageBarStyles}
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
           >
-            {mensaje}
-          </MessageBar>
+            <div style={successBannerStyles.root}>
+              <Icon
+                iconName="Completed"
+                styles={{ root: successBannerStyles.icon }}
+              />
+              <div style={successBannerStyles.text}>{mensaje}</div>
+            </div>
+          </div>
         )}
 
         {/* Contenedor focuseable para enviar foco al error */}
@@ -2381,7 +2546,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
           </div>
         )}
 
-        {modo === "Ingresar" && !docsObligIngresar && !errorDocs && (
+        {modo === "Ingresar" && requiredFieldsPendientesIngresar.length > 0 && (
           <div
             role="alert"
             aria-live="assertive"
@@ -2393,9 +2558,16 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
               styles={{ root: dangerBannerStyles.icon }}
             />
             <div style={dangerBannerStyles.text}>
-              DNI requiere fecha. Carnet de sanidad y los certificados (penales y
-              policiales) requieren fecha y archivo. Si corresponde, la Licencia
-              requiere fecha.
+              <div style={requiredFieldsListStyles.title}>
+                Campos obligatorios pendientes:
+              </div>
+              <ul style={requiredFieldsListStyles.list}>
+                {requiredFieldsPendientesIngresar.map((campo) => (
+                  <li key={campo} style={requiredFieldsListStyles.item}>
+                    {campo}
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         )}
