@@ -47,7 +47,7 @@ export interface IRegistroPersonalProps {
   bloquearEmpresa: boolean; // ✅ NUEVO: si true bloquea y autodetecta, si false deja elegir
 }
 
-type Modo = "Ingresar" | "Modificar" | "Dar de baja";
+type Modo = "Ingresar" | "Modificar" | "Visualizar" | "Dar de baja";
 
 interface PersonaForm {
   Documento: string;
@@ -61,6 +61,10 @@ interface PersonaForm {
   Categoria?: string;
   correosnotificacion?: string;
   CorreosNotificacion?: string;
+}
+
+export interface IRegistroPersonalProps {
+  listaPersonal: string;
 }
 
 // -------- Opciones --------
@@ -89,7 +93,7 @@ const getDocumentoLengthRequerido = (tipo?: string): number | undefined => {
   return undefined;
 };
 
-const LST_PERSONAS = "Personal";
+const DEFAULT_LST_PERSONAS = "Personal";
 const LST_DOCS = "Documentacion";
 const LST_PROVEEDORES = "Proveedores";
 
@@ -581,6 +585,7 @@ interface DocCardProps {
   file: File | null;
   onFileChange: (file: File | null) => void;
   attachments?: Attach[];
+  readOnly?: boolean;
 }
 
 // strings del DatePicker en español
@@ -643,6 +648,7 @@ const DocCard: React.FC<DocCardProps> = ({
   file,
   onFileChange,
   attachments,
+  readOnly,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const datePickerHostRef = React.useRef<HTMLDivElement>(null);
@@ -769,6 +775,7 @@ const DocCard: React.FC<DocCardProps> = ({
           strings={datePickerStringsEs}
           formatDate={formatDateEs}
           styles={roundedDatePicker}
+          disabled={readOnly}
           // ✅ FIX: evita salto de scroll/foco al top cuando está dentro de un Modal/Dialog
           calloutProps={{
             doNotLayer: true,
@@ -777,7 +784,7 @@ const DocCard: React.FC<DocCardProps> = ({
         />
       </div>
 
-      {!ocultarArchivo && (
+      {!ocultarArchivo && !readOnly && (
         <div>
           <Label>Adjuntar archivo</Label>
           <input
@@ -861,7 +868,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   filtrarPorProveedor,
   borrar,
   bloquearEmpresa,
+  listaPersonal,
 }) => {
+  const LST_PERSONAS = listaPersonal?.trim() || DEFAULT_LST_PERSONAS;
   const [modo, setModo] = React.useState<Modo>("Ingresar");
 
   // Proveedor seleccionado / detectado
@@ -901,6 +910,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   });
 
   const isDarDeBaja = modo === "Dar de baja";
+  const isVisualizar = modo === "Visualizar";
+  const isReadOnlyMode = isDarDeBaja || isVisualizar;
 
   // ✅ Touch: cuando el usuario edita cualquier cosa, limpiamos el error para re-habilitar Guardar
   const [guardando, setGuardando] = React.useState(false);
@@ -1286,7 +1297,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   }
 
   React.useEffect(() => {
-    const visible = modo === "Modificar" || modo === "Dar de baja";
+    const visible =
+      modo === "Modificar" || modo === "Visualizar" || modo === "Dar de baja";
     if (!visible) {
       setItemsProveedor([]);
       return;
@@ -1312,12 +1324,15 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
             "Categoria",
             "ProveedorId",
             "correosnotificacion",
-            "activo"
+            "final"
           )
           .orderBy("Id", false)
           .top(5000);
 
-        let filter = "activo eq 1";
+        let filter =
+          modo === "Visualizar"
+            ? "(aprobacion eq 'Pendiente' or aprobacion eq 'Aprobado')"
+            : "final eq false";
 
         if (filtrarPorProveedor && proveedorId) {
           filter += ` and ProveedorId eq ${proveedorId}`;
@@ -1347,7 +1362,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   }, [modo, sp, filtrarPorProveedor, proveedorId]);
 
   React.useEffect(() => {
-    if (modo === "Modificar") {
+    if (modo === "Modificar" || modo === "Visualizar") {
       if (form.Documento?.trim()) {
         loadDocumentacionByTitle(form.Documento).catch((e) =>
           console.warn("auto load docs by Documento:", e)
@@ -1654,6 +1669,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   const modoOptions: Array<{ key: Modo; text: string; iconName: string }> = [
     { key: "Ingresar", text: "Ingresar", iconName: "Add" },
     { key: "Modificar", text: "Modificar", iconName: "Edit" },
+    { key: "Visualizar", text: "Visualizar", iconName: "RedEye" },
     { key: "Dar de baja", text: "Dar de baja", iconName: "Delete" },
   ];
 
@@ -1893,6 +1909,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     setMensaje(null);
     setError(null);
 
+    if (isVisualizar) return;
+
     if (!bloquearEmpresa && !proveedorId) {
       setError("Empresa es obligatoria.");
       return;
@@ -1972,7 +1990,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                   color: theme.palette.white,
                 }}
               >
-                Personal
+                {LST_PERSONAS}
               </div>
             </div>
           </Stack>
@@ -2009,7 +2027,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
         </Stack>
 
         {/* Grilla de personas del proveedor */}
-        {(modo === "Modificar" || modo === "Dar de baja") && (
+        {(modo === "Modificar" || modo === "Visualizar" || modo === "Dar de baja") && (
           <Stack
             tokens={{ childrenGap: 8 }}
             styles={sectionCardStyles}
@@ -2206,7 +2224,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                     setProveedorTitleOculto(opt?.text ? String(opt.text) : "");
                   }}
                   styles={roundedDropdown}
-                  disabled={isDarDeBaja}
+                  disabled={isReadOnlyMode}
                 />
               )}
             </StackItem>
@@ -2220,7 +2238,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 onChange={(_, v) => onChange("Nombre", v || "")}
                 required={modo !== "Dar de baja"}
                 styles={roundedField}
-                disabled={isDarDeBaja}
+                disabled={isReadOnlyMode}
               />
             </StackItem>
           </Stack>
@@ -2232,7 +2250,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 value={form.ApellidoPaterno}
                 onChange={(_, v) => onChange("ApellidoPaterno", v || "")}
                 styles={roundedField}
-                disabled={isDarDeBaja}
+                disabled={isReadOnlyMode}
               />
             </StackItem>
           </Stack>
@@ -2244,7 +2262,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 value={form.ApellidoMaterno}
                 onChange={(_, v) => onChange("ApellidoMaterno", v || "")}
                 styles={roundedField}
-                disabled={isDarDeBaja}
+                disabled={isReadOnlyMode}
               />
             </StackItem>
           </Stack>
@@ -2257,7 +2275,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 selectedKey={form.TipoDocumento}
                 onChange={(_, opt) => onChange("TipoDocumento", String(opt?.key))}
                 styles={roundedDropdown}
-                disabled={isDarDeBaja}
+                disabled={isReadOnlyMode}
               />
             </StackItem>
             <StackItem grow styles={{ root: { minWidth: 200 } }}>
@@ -2269,7 +2287,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 errorMessage={documentoErrorMessage}
                 required
                 styles={roundedField}
-                disabled={isDarDeBaja}
+                disabled={isReadOnlyMode}
               />
             </StackItem>
             <StackItem grow styles={{ root: { minWidth: 200 } }}>
@@ -2312,7 +2330,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                   }));
                 }}
                 styles={roundedDropdown}
-                disabled={isDarDeBaja || laboralBloqueado}
+                disabled={isReadOnlyMode || laboralBloqueado}
               />
             </StackItem>
 
@@ -2323,7 +2341,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                   value={form.Especificar}
                   onChange={(_, v) => onChange("Especificar", v || "")}
                   styles={roundedField}
-                  disabled={isDarDeBaja || laboralBloqueado}
+                  disabled={isReadOnlyMode || laboralBloqueado}
                 />
               </StackItem>
             )}
@@ -2337,7 +2355,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                   value={form.Licencia}
                   onChange={(_, v) => onChange("Licencia", v || "")}
                   styles={roundedField}
-                  disabled={isDarDeBaja || laboralBloqueado}
+                  disabled={isReadOnlyMode || laboralBloqueado}
                 />
               </StackItem>
               <StackItem grow styles={{ root: { minWidth: 200 } }}>
@@ -2347,7 +2365,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                   selectedKey={form.Categoria}
                   onChange={(_, opt) => onChange("Categoria", String(opt?.key))}
                   styles={roundedDropdown}
-                  disabled={isDarDeBaja || laboralBloqueado}
+                  disabled={isReadOnlyMode || laboralBloqueado}
                 />
               </StackItem>
             </Stack>
@@ -2417,7 +2435,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
             </Stack>
           )}
 
-          {modo === "Modificar" && (
+          {(modo === "Modificar" || modo === "Visualizar") && (
             <Stack tokens={{ childrenGap: 8 }}>
               {!form.Documento?.trim() ? (
                 <div style={infoBannerStyles.root}>
@@ -2431,13 +2449,14 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 </div>
               ) : (
                 <Stack horizontal wrap tokens={{ childrenGap: 12 }}>
-                  {docRows.map((r) => (
+                  {docRows.map((r: DocRow) => (
                     <DocCard
                       key={r.key}
                       title={r.label}
                       dateLabel={r.tipo === "cad" ? "Fecha de caducidad" : "Fecha de emisión"}
                       dateValue={r.fecha}
                       onDateChange={(d) => {
+                        if (isReadOnlyMode) return;
                         touch();
                         setDocRows((prev) =>
                           prev.map((row) =>
@@ -2449,6 +2468,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                       maxDate={r.tipo === "emi" ? fechaHoy : undefined}
                       file={r.file || null}
                       onFileChange={(file) => {
+                        if (isReadOnlyMode) return;
                         touch();
                         setDocRows((prev) =>
                           prev.map((row) =>
@@ -2457,6 +2477,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                         );
                       }}
                       attachments={r.attachments}
+                      readOnly={isReadOnlyMode}
                     />
                   ))}
                 </Stack>
@@ -2483,7 +2504,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 multiline
                 autoAdjustHeight
                 styles={roundedField}
-                disabled={isDarDeBaja}
+                disabled={isReadOnlyMode}
               />
             </StackItem>
           </Stack>
@@ -2630,7 +2651,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
               text="Guardar"
               iconProps={{ iconName: "Save" }}
               onClick={onGuardar}
-              disabled={!puedeGuardar}
+              disabled={!puedeGuardar || isVisualizar}
               styles={primaryButtonStyles}
             />
             <DefaultButton
