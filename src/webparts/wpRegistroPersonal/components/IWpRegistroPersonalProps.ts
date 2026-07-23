@@ -8,6 +8,14 @@ export interface IWpRegistroPersonalProps {
   userDisplayName: string;
   sp: SPFI;
   siteUrl: string;
+  listaPersonal: string;
+  vistaModificar: string;
+  vistaVisualizar: string;
+  vistaDarBaja: string;
+  mostrarIngresar: boolean;
+  mostrarModificar: boolean;
+  mostrarVisualizar: boolean;
+  mostrarDarBaja: boolean;
   filtrarPorProveedor: boolean;
   borrar: boolean;
   bloquearEmpresa: boolean; // ✅ NUEVO

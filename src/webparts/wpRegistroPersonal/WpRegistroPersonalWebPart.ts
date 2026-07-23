@@ -3,6 +3,7 @@ import {
   IPropertyPaneConfiguration,
   IPropertyPaneDropdownOption,
   PropertyPaneDropdown,
+  PropertyPaneTextField,
   PropertyPaneToggle
 } from '@microsoft/sp-property-pane';
 import { BaseClientSideWebPart } from '@microsoft/sp-webpart-base';
@@ -14,72 +15,114 @@ import RegistroPersonal, { IRegistroPersonalProps } from './components/WpRegistr
 import { spfi, SPFx, SPFI } from '@pnp/sp';
 import '@pnp/sp/webs';
 import '@pnp/sp/lists';
+import '@pnp/sp/views/list';
 import '@pnp/sp/items';
 
 export interface IWP_CENCO_Registro_PersonalWebPartProps {
+  listaPersonal: string;
+  correosDefault: string;
+  listaAdjuntos: string;
+  redirigir: boolean;
+  urlRedireccion: string;
+  vistaModificar: string;
+  vistaVisualizar: string;
+  vistaDarBaja: string;
+  mostrarIngresar: boolean;
+  mostrarModificar: boolean;
+  mostrarVisualizar: boolean;
+  mostrarDarBaja: boolean;
   filtrarPorProveedor: boolean;
   borrar: boolean;
   bloquearEmpresa: boolean;
-  listaPersonal: string;
 }
+
+type ViewInfo = {
+  Id: string;
+  Title: string;
+  DefaultView?: boolean;
+  Hidden?: boolean;
+};
 
 export default class WP_CENCO_Registro_PersonalWebPart
   extends BaseClientSideWebPart<IWP_CENCO_Registro_PersonalWebPartProps> {
-
   private _sp!: SPFI;
-  private _listaPersonalOptions: IPropertyPaneDropdownOption[] = [];
+  private _viewOptions: IPropertyPaneDropdownOption[] = [];
   private readonly _defaultListaPersonal = 'Personal';
 
   public async onInit(): Promise<void> {
     this._sp = spfi().using(SPFx(this.context));
-    await this._cargarListasDestino();
+    this.properties.listaPersonal = this.properties.listaPersonal?.trim() || this._defaultListaPersonal;
+    this.properties.mostrarIngresar = this.properties.mostrarIngresar ?? true;
+    this.properties.mostrarModificar = this.properties.mostrarModificar ?? true;
+    this.properties.mostrarVisualizar = this.properties.mostrarVisualizar ?? true;
+    this.properties.mostrarDarBaja = this.properties.mostrarDarBaja ?? true;
+    this.properties.redirigir = this.properties.redirigir ?? false;
+    await this._cargarVistasConfiguradas();
   }
 
-  private async _cargarListasDestino(): Promise<void> {
+  private _syncSelectedViews(): void {
+    const availableIds = new Set(this._viewOptions.map((opt) => String(opt.key)));
+    const fallback = this._viewOptions[0] ? String(this._viewOptions[0].key) : '';
+
+    if (!this.properties.vistaModificar || !availableIds.has(this.properties.vistaModificar)) {
+      this.properties.vistaModificar = fallback;
+    }
+
+    if (!this.properties.vistaVisualizar || !availableIds.has(this.properties.vistaVisualizar)) {
+      this.properties.vistaVisualizar = fallback;
+    }
+
+    if (!this.properties.vistaDarBaja || !availableIds.has(this.properties.vistaDarBaja)) {
+      this.properties.vistaDarBaja = fallback;
+    }
+  }
+
+  private async _cargarVistasConfiguradas(): Promise<void> {
+    const listTitle = this.properties.listaPersonal?.trim() || this._defaultListaPersonal;
+
     try {
-      const listas = await this._sp.web.lists
-        .select('Title', 'Hidden', 'BaseTemplate')();
+      const vistas = (await this._sp.web.lists
+        .getByTitle(listTitle)
+        .views.select('Id', 'Title', 'DefaultView', 'Hidden')()) as ViewInfo[];
 
-      this._listaPersonalOptions = listas
-        .filter((lista: any) => !lista.Hidden && lista.BaseTemplate === 100)
-        .map((lista: any) => ({
-          key: lista.Title,
-          text: lista.Title
-        }))
-        .sort((a, b) => a.text.localeCompare(b.text, 'es'));
+      this._viewOptions = vistas
+        .filter((vista) => !vista.Hidden)
+        .sort((a, b) => {
+          if (a.DefaultView && !b.DefaultView) return -1;
+          if (!a.DefaultView && b.DefaultView) return 1;
+          return a.Title.localeCompare(b.Title, 'es');
+        })
+        .map((vista) => ({
+          key: vista.Id,
+          text: vista.Title
+        }));
 
-      if (!this._listaPersonalOptions.length) {
-        this._listaPersonalOptions = [
-          {
-            key: this._defaultListaPersonal,
-            text: this._defaultListaPersonal
-          }
-        ];
-      }
-
-      const listaActual = this.properties.listaPersonal?.trim();
-      const existeActual = listaActual
-        ? this._listaPersonalOptions.some((opt) => opt.key === listaActual)
-        : false;
-
-      if (!listaActual || !existeActual) {
-        this.properties.listaPersonal =
-          String(this._listaPersonalOptions[0].key) || this._defaultListaPersonal;
-      }
+      this._syncSelectedViews();
     } catch {
-      this._listaPersonalOptions = [
-        {
-          key: this._defaultListaPersonal,
-          text: this._defaultListaPersonal
-        }
-      ];
-
-      if (!this.properties.listaPersonal) {
-        this.properties.listaPersonal = this._defaultListaPersonal;
-      }
+      this._viewOptions = [];
+      this.properties.vistaModificar = '';
+      this.properties.vistaVisualizar = '';
+      this.properties.vistaDarBaja = '';
     }
 
     this.context.propertyPane.refresh();
+  }
+
+  protected onPropertyPaneFieldChanged(
+    propertyPath: string,
+    oldValue: unknown,
+    newValue: unknown
+  ): void {
+    super.onPropertyPaneFieldChanged(propertyPath, oldValue, newValue);
+
+    if (propertyPath === 'listaPersonal' && oldValue !== newValue) {
+      this.properties.listaPersonal = String(newValue || '').trim();
+      void this._cargarVistasConfiguradas();
+    }
+
+    if (propertyPath === 'redirigir') {
+      this.context.propertyPane.refresh();
+    }
   }
 
   public render(): void {
@@ -88,10 +131,21 @@ export default class WP_CENCO_Registro_PersonalWebPart
       {
         sp: this._sp,
         siteUrl: this.context.pageContext.web.absoluteUrl,
+        listaPersonal: this.properties.listaPersonal || this._defaultListaPersonal,
+        correosDefault: this.properties.correosDefault || '',
+        listaAdjuntos: this.properties.listaAdjuntos || '',
+        redirigir: this.properties.redirigir ?? false,
+        urlRedireccion: this.properties.urlRedireccion || '',
+        vistaModificar: this.properties.vistaModificar || '',
+        vistaVisualizar: this.properties.vistaVisualizar || '',
+        vistaDarBaja: this.properties.vistaDarBaja || '',
+        mostrarIngresar: this.properties.mostrarIngresar ?? true,
+        mostrarModificar: this.properties.mostrarModificar ?? true,
+        mostrarVisualizar: this.properties.mostrarVisualizar ?? true,
+        mostrarDarBaja: this.properties.mostrarDarBaja ?? true,
         filtrarPorProveedor: this.properties.filtrarPorProveedor,
         borrar: this.properties.borrar,
-        bloquearEmpresa: this.properties.bloquearEmpresa,
-        listaPersonal: this.properties.listaPersonal || this._defaultListaPersonal
+        bloquearEmpresa: this.properties.bloquearEmpresa
       }
     );
 
@@ -110,32 +164,108 @@ export default class WP_CENCO_Registro_PersonalWebPart
     return {
       pages: [
         {
-          header: { description: 'Configuración' },
+          header: { description: 'Configuracion' },
           groups: [
             {
-              groupName: 'Opciones de la grilla',
+              groupName: 'Origen de datos',
               groupFields: [
-                PropertyPaneDropdown('listaPersonal', {
+                PropertyPaneTextField('listaPersonal', {
                   label: 'Lista destino',
-                  options: this._listaPersonalOptions,
-                  selectedKey: this.properties.listaPersonal || this._defaultListaPersonal,
-                  disabled: this._listaPersonalOptions.length === 0
+                  value: this.properties.listaPersonal || this._defaultListaPersonal,
+                  placeholder: 'Escribi el nombre exacto de la lista'
                 }),
+                PropertyPaneTextField('correosDefault', {
+                  label: 'Correos por default',
+                  value: this.properties.correosDefault || '',
+                  placeholder: 'correo1@dominio.com; correo2@dominio.com'
+                }),
+                PropertyPaneTextField('listaAdjuntos', {
+                  label: 'Lista de adjuntos',
+                  value: this.properties.listaAdjuntos || '',
+                  placeholder: 'Documentacion'
+                }),
+                PropertyPaneToggle('redirigir', {
+                  label: 'Redirigir despues de crear',
+                  onText: 'Si',
+                  offText: 'No'
+                })
+              ]
+            },
+            {
+              groupName: 'Vistas de la grilla',
+              groupFields: [
+                PropertyPaneDropdown('vistaModificar', {
+                  label: 'Vista para Modificar',
+                  options: this._viewOptions,
+                  selectedKey: this.properties.vistaModificar || undefined,
+                  disabled: this._viewOptions.length === 0
+                }),
+                PropertyPaneDropdown('vistaVisualizar', {
+                  label: 'Vista para Visualizar',
+                  options: this._viewOptions,
+                  selectedKey: this.properties.vistaVisualizar || undefined,
+                  disabled: this._viewOptions.length === 0
+                }),
+                PropertyPaneDropdown('vistaDarBaja', {
+                  label: 'Vista para Dar de baja',
+                  options: this._viewOptions,
+                  selectedKey: this.properties.vistaDarBaja || undefined,
+                  disabled: this._viewOptions.length === 0
+                })
+              ]
+            },
+            {
+              groupName: 'Visibilidad del formulario',
+              groupFields: [
+                PropertyPaneToggle('mostrarIngresar', {
+                  label: 'Mostrar opcion Ingresar',
+                  onText: 'Si',
+                  offText: 'No'
+                }),
+                PropertyPaneToggle('mostrarModificar', {
+                  label: 'Mostrar opcion Modificar',
+                  onText: 'Si',
+                  offText: 'No'
+                }),
+                PropertyPaneToggle('mostrarVisualizar', {
+                  label: 'Mostrar opcion Visualizar',
+                  onText: 'Si',
+                  offText: 'No'
+                }),
+                PropertyPaneToggle('mostrarDarBaja', {
+                  label: 'Mostrar opcion Dar de baja',
+                  onText: 'Si',
+                  offText: 'No'
+                })
+              ]
+            },
+            {
+              groupName: 'Opciones de comportamiento',
+              groupFields: [
                 PropertyPaneToggle('filtrarPorProveedor', {
                   label: 'Filtrar registros por proveedor del usuario',
-                  onText: 'Sí',
+                  onText: 'Si',
                   offText: 'No'
                 }),
                 PropertyPaneToggle('borrar', {
                   label: 'Borrar registro al dar de baja',
-                  onText: 'Sí (eliminar registro)',
+                  onText: 'Si (eliminar registro)',
                   offText: 'No (marcar inactivo)'
                 }),
                 PropertyPaneToggle('bloquearEmpresa', {
-                  label: 'Bloquear empresa (según proveedor del usuario)',
-                  onText: 'Sí (bloqueado)',
+                  label: 'Bloquear empresa segun proveedor del usuario',
+                  onText: 'Si (bloqueado)',
                   offText: 'No (editable)'
-                })
+                }),
+                ...(this.properties.redirigir
+                  ? [
+                      PropertyPaneTextField('urlRedireccion', {
+                        label: 'URL de redireccion',
+                        value: this.properties.urlRedireccion || '',
+                        placeholder: 'https://...'
+                      })
+                    ]
+                  : [])
               ]
             }
           ]

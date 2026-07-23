@@ -33,6 +33,7 @@ import {
 
 import "@pnp/sp/webs";
 import "@pnp/sp/lists";
+import "@pnp/sp/views/list";
 import "@pnp/sp/items";
 import "@pnp/sp/attachments";
 import "@pnp/sp/site-users/web";
@@ -42,6 +43,18 @@ import "@pnp/sp/fields/list";
 export interface IRegistroPersonalProps {
   sp: SPFI;
   siteUrl: string;
+  listaPersonal: string;
+  correosDefault: string;
+  listaAdjuntos: string;
+  redirigir: boolean;
+  urlRedireccion: string;
+  vistaModificar: string;
+  vistaVisualizar: string;
+  vistaDarBaja: string;
+  mostrarIngresar: boolean;
+  mostrarModificar: boolean;
+  mostrarVisualizar: boolean;
+  mostrarDarBaja: boolean;
   filtrarPorProveedor: boolean;
   borrar: boolean; // toggle de la webpart
   bloquearEmpresa: boolean; // ✅ NUEVO: si true bloquea y autodetecta, si false deja elegir
@@ -65,6 +78,17 @@ interface PersonaForm {
 
 export interface IRegistroPersonalProps {
   listaPersonal: string;
+  correosDefault: string;
+  listaAdjuntos: string;
+  redirigir: boolean;
+  urlRedireccion: string;
+  vistaModificar: string;
+  vistaVisualizar: string;
+  vistaDarBaja: string;
+  mostrarIngresar: boolean;
+  mostrarModificar: boolean;
+  mostrarVisualizar: boolean;
+  mostrarDarBaja: boolean;
 }
 
 // -------- Opciones --------
@@ -94,7 +118,7 @@ const getDocumentoLengthRequerido = (tipo?: string): number | undefined => {
 };
 
 const DEFAULT_LST_PERSONAS = "Personal";
-const LST_DOCS = "Documentacion";
+const DEFAULT_LST_DOCS = "Documentacion";
 const LST_PROVEEDORES = "Proveedores";
 
 // tokens de Stack
@@ -109,6 +133,79 @@ const stripHtml = (html?: string | null): string =>
   html ? html.replace(/<[^>]*>/g, "").trim() : "";
 
 type DocFields = { Caducidad?: string | null; Emision?: string | null };
+
+type PersonaGridRow = {
+  key: string;
+  Id: number;
+  Title: string;
+  Nombre?: string;
+  Apellido_x0020_paterno?: string;
+  Apellido_x0020_materno?: string;
+  tipodocumento?: string;
+  puesto?: string;
+  otro?: string;
+  Licencia?: string;
+  Categoria?: string;
+  ProveedorId?: number;
+  correosnotificacion?: string;
+};
+
+type RenderedListRow = Record<string, unknown>;
+
+type ListViewInfo = {
+  Id: string;
+  Title: string;
+  ListViewXml: string;
+  DefaultView?: boolean;
+  Hidden?: boolean;
+};
+
+const textFromRow = (row: RenderedListRow, keys: string[]): string => {
+  for (let i = 0; i < keys.length; i++) {
+    const value = row[keys[i]];
+    if (value !== undefined && value !== null) {
+      return String(value);
+    }
+  }
+  return "";
+};
+
+const numberFromRow = (row: RenderedListRow, keys: string[]): number | undefined => {
+  for (let i = 0; i < keys.length; i++) {
+    const value = row[keys[i]];
+    if (value !== undefined && value !== null && value !== "") {
+      const parsed = Number(value);
+      if (!isNaN(parsed)) return parsed;
+    }
+  }
+  return undefined;
+};
+
+const rowToPersonaItem = (row: RenderedListRow, index: number): PersonaGridRow => ({
+  key: String(row.ID ?? row.Id ?? row.id ?? index),
+  Id: Number(row.ID ?? row.Id ?? row.id ?? index),
+  Title: textFromRow(row, ["Title", "Documento", "Doc"]),
+  Nombre: textFromRow(row, ["Nombre"]),
+  Apellido_x0020_paterno: textFromRow(row, [
+    "Apellido_x0020_paterno",
+    "Apellido_paterno",
+    "Apellido Paterno",
+    "Apellido paterno",
+  ]),
+  Apellido_x0020_materno: textFromRow(row, [
+    "Apellido_x0020_materno",
+    "Apellido_materno",
+    "Apellido Materno",
+    "Apellido materno",
+  ]),
+  tipodocumento: textFromRow(row, ["tipodocumento", "TipoDocumento", "Tipo de documento"]),
+  puesto: textFromRow(row, ["puesto", "Puesto"]),
+  otro: textFromRow(row, ["otro", "Especificar"]),
+  Licencia: textFromRow(row, ["Licencia"]),
+  Categoria: textFromRow(row, ["Categoria"]),
+  ProveedorId: numberFromRow(row, ["ProveedorId"]),
+  correosnotificacion: textFromRow(row, ["correosnotificacion"]),
+});
 
 // ===== Tema Cencosud =====
 const theme = createTheme({
@@ -562,8 +659,13 @@ const DOC_DEFS = [
   { key: "Antecedentes policiales", tipo: "emi" as const },
 ];
 
-const makeDefaultDocRows = (): DocRow[] =>
-  DOC_DEFS.map((d) => ({
+const getDocDefsForPuesto = (puesto?: string) => {
+  const norm = (puesto || "").toLowerCase().trim();
+  return DOC_DEFS.filter((d) => d.key !== "Licencia" || norm === "conductor");
+};
+
+const makeDefaultDocRows = (puesto?: string): DocRow[] =>
+  getDocDefsForPuesto(puesto).map((d) => ({
     key: d.key,
     label: d.key,
     tipo: d.tipo,
@@ -580,6 +682,7 @@ interface DocCardProps {
   dateLabel: string;
   dateValue: Date | null;
   onDateChange: (date: Date | null) => void;
+  required?: boolean;
   minDate?: Date;
   maxDate?: Date;
   file: File | null;
@@ -643,6 +746,7 @@ const DocCard: React.FC<DocCardProps> = ({
   dateLabel,
   dateValue,
   onDateChange,
+  required,
   minDate,
   maxDate,
   file,
@@ -760,6 +864,7 @@ const DocCard: React.FC<DocCardProps> = ({
       <div ref={datePickerHostRef}>
         <DatePicker
           label={dateLabel}
+          isRequired={required}
           value={dateValue || undefined}
           onSelectDate={(d) => {
             shouldRestoreDateFocusRef.current = true;
@@ -865,12 +970,24 @@ const cutoffSinceMonths = (months: number) => addMonthsSafe(today0(), -months);
 const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   sp,
   siteUrl,
+  listaPersonal,
+  correosDefault,
+  listaAdjuntos,
+  redirigir,
+  urlRedireccion,
+  vistaModificar,
+  vistaVisualizar,
+  vistaDarBaja,
+  mostrarIngresar,
+  mostrarModificar,
+  mostrarVisualizar,
+  mostrarDarBaja,
   filtrarPorProveedor,
   borrar,
   bloquearEmpresa,
-  listaPersonal,
 }) => {
   const LST_PERSONAS = listaPersonal?.trim() || DEFAULT_LST_PERSONAS;
+  const LST_DOCS = listaAdjuntos?.trim() || DEFAULT_LST_DOCS;
   const [modo, setModo] = React.useState<Modo>("Ingresar");
 
   // Proveedor seleccionado / detectado
@@ -906,7 +1023,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     Especificar: "",
     Licencia: "",
     Categoria: undefined,
-    CorreosNotificacion: "",
+    CorreosNotificacion: correosDefault?.trim() || "",
   });
 
   const isDarDeBaja = modo === "Dar de baja";
@@ -960,6 +1077,27 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
   const puestoNorm = (form.Puesto || "").toLowerCase().trim();
   const showEspecificar = React.useMemo(() => puestoNorm === "otro", [puestoNorm]);
   const showLicenciaCat = React.useMemo(() => puestoNorm === "conductor", [puestoNorm]);
+
+  const modoOptions = React.useMemo(() => {
+    const options: Array<{ key: Modo; text: string; iconName: string }> = [];
+    if (mostrarIngresar) options.push({ key: "Ingresar", text: "Ingresar", iconName: "Add" });
+    if (mostrarModificar) options.push({ key: "Modificar", text: "Modificar", iconName: "Edit" });
+    if (mostrarVisualizar) options.push({ key: "Visualizar", text: "Visualizar", iconName: "RedEye" });
+    if (mostrarDarBaja) options.push({ key: "Dar de baja", text: "Dar de baja", iconName: "Delete" });
+    return options;
+  }, [
+    mostrarIngresar,
+    mostrarModificar,
+    mostrarVisualizar,
+    mostrarDarBaja,
+  ]);
+
+  React.useEffect(() => {
+    if (modoOptions.length === 0) return;
+    if (!modoOptions.some((opt) => opt.key === modo)) {
+      setModo(modoOptions[0].key);
+    }
+  }, [modoOptions, modo]);
 
   // ---- Validación de antigüedad ----
   const errorDocs = React.useMemo(() => {
@@ -1205,6 +1343,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
 
   // --- Filtro local de la grilla de personas ---
   type PersonaItem = {
+    key?: string;
     Id: number;
     Title: string;
     Nombre?: string;
@@ -1309,43 +1448,96 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     const cargarGrid = async () => {
       setCargandoGrid(true);
       try {
-        let query = sp.web.lists
-          .getByTitle(LST_PERSONAS)
-          .items.select(
-            "Id",
-            "Title",
-            "Nombre",
-            "Apellido_x0020_paterno",
-            "Apellido_x0020_materno",
-            "tipodocumento",
-            "puesto",
-            "otro",
-            "Licencia",
-            "Categoria",
-            "ProveedorId",
-            "correosnotificacion",
-            "final"
-          )
-          .orderBy("Id", false)
-          .top(5000);
-
-        let filter =
+        const list = sp.web.lists.getByTitle(LST_PERSONAS);
+        const selectedViewId =
           modo === "Visualizar"
-            ? "(aprobacion eq 'Pendiente' or aprobacion eq 'Aprobado')"
-            : "final eq false";
+            ? vistaVisualizar
+            : modo === "Dar de baja"
+              ? vistaDarBaja
+              : vistaModificar;
+        let items: PersonaItem[] = [];
 
-        if (filtrarPorProveedor && proveedorId) {
-          filter += ` and ProveedorId eq ${proveedorId}`;
+        if (selectedViewId) {
+          try {
+            const view = (await list.views.getById(selectedViewId).select("ListViewXml")()) as ListViewInfo;
+            const rendered = await list.renderListData(view.ListViewXml);
+            const rows = (rendered.Row || []) as RenderedListRow[];
+            items = rows.map((row, index) => rowToPersonaItem(row, index));
+          } catch {
+            let query = list.items
+              .select(
+                "Id",
+                "Title",
+                "Nombre",
+                "Apellido_x0020_paterno",
+                "Apellido_x0020_materno",
+                "tipodocumento",
+                "puesto",
+                "otro",
+                "Licencia",
+                "Categoria",
+                "ProveedorId",
+                "correosnotificacion",
+                "final"
+              )
+              .orderBy("Id", false)
+              .top(5000);
+
+            let filter =
+              modo === "Visualizar"
+                ? "(aprobacion eq 'Pendiente' or aprobacion eq 'Aprobado')"
+                : "final eq false";
+
+            if (filtrarPorProveedor && proveedorId) {
+              filter += ` and ProveedorId eq ${proveedorId}`;
+            }
+
+            query = query.filter(filter);
+            const queried = await query();
+            items = (queried as RenderedListRow[]).map((row, index) =>
+              rowToPersonaItem(row, index)
+            );
+          }
+        } else {
+          let query = list.items
+            .select(
+              "Id",
+              "Title",
+              "Nombre",
+              "Apellido_x0020_paterno",
+              "Apellido_x0020_materno",
+              "tipodocumento",
+              "puesto",
+              "otro",
+              "Licencia",
+              "Categoria",
+              "ProveedorId",
+              "correosnotificacion",
+              "final"
+            )
+            .orderBy("Id", false)
+            .top(5000);
+
+          let filter =
+            modo === "Visualizar"
+              ? "(aprobacion eq 'Pendiente' or aprobacion eq 'Aprobado')"
+              : "final eq false";
+
+          if (filtrarPorProveedor && proveedorId) {
+            filter += ` and ProveedorId eq ${proveedorId}`;
+          }
+
+          query = query.filter(filter);
+          const queried = await query();
+          items = (queried as RenderedListRow[]).map((row, index) =>
+            rowToPersonaItem(row, index)
+          );
         }
-
-        query = query.filter(filter);
-
-        const items = await query();
 
         const itemsFiltrados =
           filtrarPorProveedor && proveedorId
-            ? (items as any[]).filter((it) => it.ProveedorId === proveedorId)
-            : (items as any[]);
+            ? items.filter((it) => it.ProveedorId === proveedorId)
+            : items;
 
         if (!cancelado) setItemsProveedor(itemsFiltrados);
       } catch {
@@ -1359,19 +1551,19 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     return () => {
       cancelado = true;
     };
-  }, [modo, sp, filtrarPorProveedor, proveedorId]);
+  }, [modo, sp, filtrarPorProveedor, proveedorId, vistaModificar, vistaVisualizar, vistaDarBaja]);
 
   React.useEffect(() => {
     if (modo === "Modificar" || modo === "Visualizar") {
       if (form.Documento?.trim()) {
-        loadDocumentacionByTitle(form.Documento).catch((e) =>
+        loadDocumentacionByTitle(form.Documento, form.Puesto).catch((e) =>
           console.warn("auto load docs by Documento:", e)
         );
       } else {
-        setDocRows(makeDefaultDocRows());
+        setDocRows(makeDefaultDocRows(form.Puesto));
       }
     }
-  }, [modo, form.Documento]);
+  }, [modo, form.Documento, form.Puesto]);
 
   // ✅ limpiar configurable + remount + scroll arriba
   const limpiar = (opts?: { keepMessages?: boolean }) => {
@@ -1387,7 +1579,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       Especificar: "",
       Licencia: "",
       Categoria: undefined,
-      CorreosNotificacion: "",
+      CorreosNotificacion: correosDefault?.trim() || "",
     });
 
     setDniCaducidad(null);
@@ -1556,7 +1748,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     return isNaN(d.getTime()) ? null : d;
   }
 
-  async function loadDocumentacionByTitle(docTitle: string): Promise<void> {
+  async function loadDocumentacionByTitle(docTitle: string, puesto?: string): Promise<void> {
     const rows = await sp.web.lists
       .getByTitle(LST_DOCS)
       .items.select("Id", "Title", "Documento", "Caducidad", "Emision")
@@ -1564,36 +1756,27 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       .top(5000)();
 
     const map = new Map<string, any>(rows.map((r) => [String(r.Documento), r]));
+    const defs = getDocDefsForPuesto(puesto ?? form.Puesto);
 
     setDniCaducidad(toDate(map.get("DNI")?.Caducidad ?? null));
-    setLicCaducidad(toDate(map.get("Licencia")?.Caducidad ?? null));
+    setLicCaducidad(defs.some((d) => d.key === "Licencia") ? toDate(map.get("Licencia")?.Caducidad ?? null) : null);
     setCarnetEmision(toDate(map.get("Carnet de sanidad")?.Emision ?? null));
     setPenalesEmision(toDate(map.get("Antecedentes penales")?.Emision ?? null));
     setPolicialesEmision(toDate(map.get("Antecedentes policiales")?.Emision ?? null));
 
-    const defs = [
+    const defsRows = [
       { key: "DNI", tipo: "cad" as const, fechaRaw: map.get("DNI")?.Caducidad ?? null },
-      { key: "Licencia", tipo: "cad" as const, fechaRaw: map.get("Licencia")?.Caducidad ?? null },
-      {
-        key: "Carnet de sanidad",
-        tipo: "emi" as const,
-        fechaRaw: map.get("Carnet de sanidad")?.Emision ?? null,
-      },
-      {
-        key: "Antecedentes penales",
-        tipo: "emi" as const,
-        fechaRaw: map.get("Antecedentes penales")?.Emision ?? null,
-      },
-      {
-        key: "Antecedentes policiales",
-        tipo: "emi" as const,
-        fechaRaw: map.get("Antecedentes policiales")?.Emision ?? null,
-      },
+      ...(defs.some((d) => d.key === "Licencia")
+        ? [{ key: "Licencia", tipo: "cad" as const, fechaRaw: map.get("Licencia")?.Caducidad ?? null }]
+        : []),
+      { key: "Carnet de sanidad", tipo: "emi" as const, fechaRaw: map.get("Carnet de sanidad")?.Emision ?? null },
+      { key: "Antecedentes penales", tipo: "emi" as const, fechaRaw: map.get("Antecedentes penales")?.Emision ?? null },
+      { key: "Antecedentes policiales", tipo: "emi" as const, fechaRaw: map.get("Antecedentes policiales")?.Emision ?? null },
     ];
 
     const withAtts: DocRow[] = [];
-    for (let i = 0; i < defs.length; i++) {
-      const d = defs[i];
+    for (let i = 0; i < defsRows.length; i++) {
+      const d = defsRows[i];
       const r = map.get(d.key);
       let attachments: Attach[] = [];
       if (r?.Id) {
@@ -1628,8 +1811,9 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     setPolicialesFile(null);
   }
 
-  async function loadFromGridItem(it: any) {
+  async function loadFromGridItem(it: PersonaItem) {
     touch();
+    const row = it as unknown as RenderedListRow;
 
     if (!bloquearEmpresa) {
       const pid = it.ProveedorId ? Number(it.ProveedorId) : null;
@@ -1643,21 +1827,32 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     }
 
     setForm({
-      Documento: it.Title ?? "",
-      Nombre: it.Nombre ?? "",
-      ApellidoPaterno: it.Apellido_x0020_paterno ?? "",
-      ApellidoMaterno: it.Apellido_x0020_materno ?? "",
-      TipoDocumento: it.tipodocumento ?? undefined,
-      Puesto: it.puesto ?? undefined,
-      Especificar: it.otro ?? "",
-      Licencia: it.Licencia ?? "",
-      Categoria: it.Categoria ?? undefined,
-      CorreosNotificacion: stripHtml(it.correosnotificacion),
+      Documento: textFromRow(row, ["Title", "Documento", "Doc"]),
+      Nombre: textFromRow(row, ["Nombre"]),
+      ApellidoPaterno: textFromRow(row, [
+        "Apellido_x0020_paterno",
+        "Apellido_paterno",
+        "Apellido Paterno",
+        "Apellido paterno",
+      ]),
+      ApellidoMaterno: textFromRow(row, [
+        "Apellido_x0020_materno",
+        "Apellido_materno",
+        "Apellido Materno",
+        "Apellido materno",
+      ]),
+      TipoDocumento: textFromRow(row, ["tipodocumento", "TipoDocumento", "Tipo de documento"]) || undefined,
+      Puesto: textFromRow(row, ["puesto", "Puesto"]) || undefined,
+      Especificar: textFromRow(row, ["otro", "Especificar"]),
+      Licencia: textFromRow(row, ["Licencia"]),
+      Categoria: textFromRow(row, ["Categoria"]) || undefined,
+      CorreosNotificacion: stripHtml(textFromRow(row, ["correosnotificacion", "CorreosNotificacion"])),
     });
 
-    if (it.Title) {
+    const docTitle = textFromRow(row, ["Title", "Documento", "Doc"]);
+    if (docTitle) {
       try {
-        await loadDocumentacionByTitle(it.Title);
+        await loadDocumentacionByTitle(docTitle, textFromRow(row, ["puesto", "Puesto"]));
       } catch (e) {
         console.warn(e);
       }
@@ -1666,12 +1861,20 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
 
   const onCancelar = () => limpiar();
 
-  const modoOptions: Array<{ key: Modo; text: string; iconName: string }> = [
-    { key: "Ingresar", text: "Ingresar", iconName: "Add" },
-    { key: "Modificar", text: "Modificar", iconName: "Edit" },
-    { key: "Visualizar", text: "Visualizar", iconName: "RedEye" },
-    { key: "Dar de baja", text: "Dar de baja", iconName: "Delete" },
-  ];
+  const navigateAfterCreate = () => {
+    const target = urlRedireccion.trim();
+    if (!redirigir || !target) return;
+
+    try {
+      if (window.self !== window.top && window.top) {
+        window.top.location.assign(target);
+      } else {
+        window.location.assign(target);
+      }
+    } catch {
+      window.location.assign(target);
+    }
+  };
 
   // ======= validación de docs obligatorios para Ingresar =======
   const docsObligIngresar =
@@ -1684,51 +1887,37 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
     policialesFile !== null &&
     (!showLicenciaCat || licCaducidad !== null);
 
-  const requiredFieldsPendientesIngresar = React.useMemo(() => {
-    if (modo !== "Ingresar") return [];
+  const requiredFieldsPendientes = React.useMemo(() => {
+    if (modo === "Visualizar") return [];
 
     const pendientes: string[] = [];
 
-    if (!bloquearEmpresa && !proveedorId) pendientes.push("Empresa");
+    if (!proveedorId) pendientes.push("Empresa");
     if (!form.Nombre?.trim()) pendientes.push("Nombre");
+    if (!form.ApellidoPaterno?.trim()) pendientes.push("Apellido paterno");
+    if (!form.ApellidoMaterno?.trim()) pendientes.push("Apellido materno");
+    if (!form.TipoDocumento?.trim()) pendientes.push("Tipo de documento");
     if (!form.Documento?.trim()) pendientes.push("Documento");
+    if (!form.Puesto?.trim()) pendientes.push("Puesto");
     if (dniCaducidad === null) pendientes.push("Fecha de caducidad del DNI");
-    if (showLicenciaCat && licCaducidad === null) {
-      pendientes.push("Fecha de caducidad de la Licencia");
-    }
-    if (carnetEmision === null) pendientes.push("Fecha de emision del Carnet de sanidad");
-    if (carnetFile === null) pendientes.push("Archivo del Carnet de sanidad");
-    if (penalesEmision === null) {
-      pendientes.push("Fecha de emision de Antecedentes penales");
-    }
-    if (penalesFile === null) pendientes.push("Archivo de Antecedentes penales");
-    if (policialesEmision === null) {
-      pendientes.push("Fecha de emision de Antecedentes policiales");
-    }
-    if (policialesFile === null) pendientes.push("Archivo de Antecedentes policiales");
 
     return pendientes;
   }, [
-    bloquearEmpresa,
     proveedorId,
     form.Nombre,
+    form.ApellidoPaterno,
+    form.ApellidoMaterno,
+    form.TipoDocumento,
     form.Documento,
+    form.Puesto,
     modo,
     dniCaducidad,
-    showLicenciaCat,
-    licCaducidad,
-    carnetEmision,
-    carnetFile,
-    penalesEmision,
-    penalesFile,
-    policialesEmision,
-    policialesFile,
   ]);
 
   const puedeGuardar =
     !guardando &&
     !errorDocs &&
-    (modo !== "Ingresar" || requiredFieldsPendientesIngresar.length === 0);
+    requiredFieldsPendientes.length === 0;
 
   const fechaHoy = today0();
 
@@ -1853,6 +2042,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
 
         limpiar({ keepMessages: true });
         setMensaje("Ingresado en Personas y Documentación.");
+        navigateAfterCreate();
       }
 
       if (modo === "Modificar") {
@@ -1911,7 +2101,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
 
     if (isVisualizar) return;
 
-    if (!bloquearEmpresa && !proveedorId) {
+    if (!proveedorId) {
       setError("Empresa es obligatoria.");
       return;
     }
@@ -1924,8 +2114,28 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
       setError(documentoErrorMessage);
       return;
     }
-    if (modo !== "Dar de baja" && !form.Nombre?.trim()) {
+    if (!form.Nombre?.trim()) {
       setError("Nombre es obligatorio.");
+      return;
+    }
+    if (!form.ApellidoPaterno?.trim()) {
+      setError("Apellido paterno es obligatorio.");
+      return;
+    }
+    if (!form.ApellidoMaterno?.trim()) {
+      setError("Apellido materno es obligatorio.");
+      return;
+    }
+    if (!form.TipoDocumento?.trim()) {
+      setError("Tipo de documento es obligatorio.");
+      return;
+    }
+    if (!form.Puesto?.trim()) {
+      setError("Puesto es obligatorio.");
+      return;
+    }
+    if (dniCaducidad === null) {
+      setError("Fecha de caducidad del DNI es obligatoria.");
       return;
     }
     if (errorDocs) {
@@ -1995,35 +2205,44 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
             </div>
           </Stack>
 
-          <Stack horizontal wrap tokens={{ childrenGap: 14 }}>
-            {modoOptions.map((opt) => (
-              <Stack
-                key={opt.key}
-                styles={modeTileWrapStyles}
-              >
-                <DefaultButton
-                  text={opt.text}
-                  iconProps={{ iconName: opt.iconName }}
-                  checked={modo === opt.key}
-                  styles={modeButtonStyles}
-                  onClick={() => {
-                    touch();
-                    const next = opt.key;
-                    setModo(next);
-                    if (next === "Ingresar") {
-                      limpiar();
-                      try {
-                        selectionRef.current?.setAllSelected(false);
-                      } catch {
-                        // nada
+          {modoOptions.length === 0 ? (
+            <div style={infoBannerStyles.root}>
+              <Icon iconName="Info" styles={{ root: infoBannerStyles.icon }} />
+              <div style={infoBannerStyles.text}>
+                No hay opciones visibles del formulario activadas.
+              </div>
+            </div>
+          ) : (
+            <Stack horizontal wrap tokens={{ childrenGap: 14 }}>
+              {modoOptions.map((opt) => (
+                <Stack
+                  key={opt.key}
+                  styles={modeTileWrapStyles}
+                >
+                  <DefaultButton
+                    text={opt.text}
+                    iconProps={{ iconName: opt.iconName }}
+                    checked={modo === opt.key}
+                    styles={modeButtonStyles}
+                    onClick={() => {
+                      touch();
+                      const next = opt.key;
+                      setModo(next);
+                      if (next === "Ingresar") {
+                        limpiar();
+                        try {
+                          selectionRef.current?.setAllSelected(false);
+                        } catch {
+                          // nada
+                        }
                       }
-                    }
-                  }}
-                />
-                {modo === opt.key && <span style={modeTileDotStyles} />}
-              </Stack>
-            ))}
-          </Stack>
+                    }}
+                  />
+                  {modo === opt.key && <span style={modeTileDotStyles} />}
+                </Stack>
+              ))}
+            </Stack>
+          )}
         </Stack>
 
         {/* Grilla de personas del proveedor */}
@@ -2078,7 +2297,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                         compact
                         styles={{ root: { minWidth: 560 } }}
                         onItemInvoked={(it) =>
-                          loadFromGridItem(it as any).catch((e) =>
+                          loadFromGridItem(it as PersonaItem).catch((e) =>
                             console.warn("onItemInvoked -> loadFromGridItem:", e)
                           )
                         }
@@ -2207,6 +2426,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 <TextField
                   label="Empresa"
                   value={proveedorTitleOculto || ""}
+                  required
                   disabled
                   styles={roundedField}
                 />
@@ -2236,7 +2456,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 label="Nombre"
                 value={form.Nombre}
                 onChange={(_, v) => onChange("Nombre", v || "")}
-                required={modo !== "Dar de baja"}
+                required
                 styles={roundedField}
                 disabled={isReadOnlyMode}
               />
@@ -2249,6 +2469,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 label="Apellido paterno"
                 value={form.ApellidoPaterno}
                 onChange={(_, v) => onChange("ApellidoPaterno", v || "")}
+                required
                 styles={roundedField}
                 disabled={isReadOnlyMode}
               />
@@ -2261,6 +2482,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 label="Apellido materno"
                 value={form.ApellidoMaterno}
                 onChange={(_, v) => onChange("ApellidoMaterno", v || "")}
+                required
                 styles={roundedField}
                 disabled={isReadOnlyMode}
               />
@@ -2274,6 +2496,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 options={opcionesTipoDocumento}
                 selectedKey={form.TipoDocumento}
                 onChange={(_, opt) => onChange("TipoDocumento", String(opt?.key))}
+                required
                 styles={roundedDropdown}
                 disabled={isReadOnlyMode}
               />
@@ -2328,7 +2551,8 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                     Licencia: esConductor ? prev.Licencia : "",
                     Categoria: esConductor ? prev.Categoria : undefined,
                   }));
-                }}
+                  }}
+                required
                 styles={roundedDropdown}
                 disabled={isReadOnlyMode || laboralBloqueado}
               />
@@ -2388,6 +2612,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 dateLabel="Fecha de caducidad"
                 dateValue={dniCaducidad}
                 onDateChange={setDateAndTouch(setDniCaducidad)}
+                required
                 minDate={fechaHoy}
                 file={dniFile}
                 onFileChange={setFileAndTouch(setDniFile)}
@@ -2567,7 +2792,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
           </div>
         )}
 
-        {modo === "Ingresar" && requiredFieldsPendientesIngresar.length > 0 && (
+        {modo === "Ingresar" && requiredFieldsPendientes.length > 0 && (
           <div
             role="alert"
             aria-live="assertive"
@@ -2583,7 +2808,7 @@ const RegistroPersonal: React.FC<IRegistroPersonalProps> = ({
                 Campos obligatorios pendientes:
               </div>
               <ul style={requiredFieldsListStyles.list}>
-                {requiredFieldsPendientesIngresar.map((campo) => (
+                {requiredFieldsPendientes.map((campo) => (
                   <li key={campo} style={requiredFieldsListStyles.item}>
                     {campo}
                   </li>
